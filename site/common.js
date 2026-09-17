@@ -4,7 +4,8 @@ const BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
 
 /* ---------- dither helpers ---------- */
 // Draw with `paint(ctx, w, h)` in greyscale at low res, then Bayer-threshold into ink squares.
-function ditherInto(canvas, paint, { cell = 1, color = INK } = {}) {
+// `threshold`: a number cuts hard at that grey level (clean bitmap) instead of Bayer dithering.
+function ditherInto(canvas, paint, { cell = 1, color = INK, threshold = null } = {}) {
   const w = Math.floor(canvas.width / cell), h = Math.floor(canvas.height / cell);
   const off = document.createElement('canvas');
   off.width = w; off.height = h;
@@ -15,9 +16,12 @@ function ditherInto(canvas, paint, { cell = 1, color = INK } = {}) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = color;
+  // whole-pixel dots with a 1-pixel-or-so gap, so edges never blur
+  const dot = cell <= 1 ? 1 : cell - Math.max(1, Math.round(cell * 0.14));
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const v = px[(y * w + x) * 4] / 255;
-    if (v < (BAYER[y % 4][x % 4] + 0.5) / 16) ctx.fillRect(x * cell, y * cell, cell * 0.86, cell * 0.86);
+    const cut = threshold ?? (BAYER[y % 4][x % 4] + 0.5) / 16;
+    if (v < cut) ctx.fillRect(x * cell, y * cell, dot, dot);
   }
 }
 
@@ -53,7 +57,7 @@ function watchZoom() {
   dprQuery = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
   dprQuery.addEventListener('change', onZoom);
 }
-function onZoom() { drawLogos(); drawWordmark?.(); watchZoom(); }
+function onZoom() { drawLogos(); drawWordmark?.(); drawTitles?.(); watchZoom(); }
 drawLogos();
 watchZoom();
 
@@ -164,3 +168,61 @@ document.fonts.ready.then(drawWordmark);
     });
   }, 900);
 })();
+
+/* ---------- section titles: dithered pixel lettering, solid ink ---------- */
+// The real text stays in the DOM (transparent) for layout, selection and screen readers;
+// a canvas on top redraws the same lines as Bayer-dithered dots.
+function drawTitles() {
+  const dpr = devicePixelRatio || 1;
+  document.querySelectorAll('.dither-title').forEach(h => {
+    const cs = getComputedStyle(h);
+    const size = parseFloat(cs.fontSize);
+    const lineH = parseFloat(cs.lineHeight) || size * 1.02;
+    const box = h.getBoundingClientRect();
+    // one dot ≈ size/18 css px, snapped to whole device pixels
+    const cell = Math.max(2, Math.round(size / 16 * dpr));
+    // extra room below for descenders, which the text box clips
+    const cssW = box.width, cssH = box.height + size * 0.25;
+    let c = h.querySelector('canvas');
+    if (!c) { c = document.createElement('canvas'); c.setAttribute('aria-hidden', 'true'); h.appendChild(c); }
+    c.width = Math.ceil(cssW * dpr / cell) * cell;
+    c.height = Math.ceil(cssH * dpr / cell) * cell;
+    c.style.width = `${c.width / dpr}px`;
+    c.style.height = `${c.height / dpr}px`;
+
+    // lay the text out exactly as the browser wrapped it: one rect per rendered line
+    const range = document.createRange();
+    const textNode = [...h.childNodes].find(n => n.nodeType === 3);
+    if (!textNode) return;
+    const text = textNode.textContent;
+    const lines = [];
+    let start = 0, lastTop = null;
+    for (let i = 0; i < text.length; i++) {
+      range.setStart(textNode, i); range.setEnd(textNode, i + 1);
+      const r = range.getClientRects()[0];
+      if (!r) continue;
+      if (lastTop !== null && Math.abs(r.top - lastTop) > size * 0.5) {
+        lines.push({ text: text.slice(start, i) });
+        start = i;
+      }
+      lastTop = r.top;
+    }
+    lines.push({ text: text.slice(start) });
+
+    ditherInto(c, (o, w, hgt) => {
+      const scale = dpr / cell; // css px → low-res dots
+      o.fillStyle = '#000';
+      o.font = `${cs.fontWeight} ${size * scale}px ${cs.fontFamily}`;
+      o.letterSpacing = `${parseFloat(cs.letterSpacing || 0) * scale}px`;
+      o.textBaseline = 'alphabetic';
+      lines.forEach((line, n) => {
+        const baseline = (n * lineH + (lineH - size) / 2 + size * 0.8) * scale;
+        o.fillText(line.text.trimEnd(), 0, baseline);
+      });
+    }, { cell, color: INK, threshold: 0.6 });
+    h.classList.add('ready');
+  });
+}
+document.fonts.ready.then(drawTitles);
+let titleWidth = innerWidth;
+addEventListener("resize", () => { if (innerWidth !== titleWidth) { titleWidth = innerWidth; drawTitles(); } });
