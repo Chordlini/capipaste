@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.png" alt="Capipaste — screenshot, talk, paste" width="100%">
+  <img src="brand/assets/banner.png" alt="Capipaste — screenshot, talk, paste" width="100%">
 </p>
 
 <p align="center">
@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/steps.png" alt="1 ⌘⇧S drag to capture · 2 talk or type the change · 3 ↩ image + note copied" width="100%">
+  <img src="brand/assets/steps.png" alt="1 ⌘⇧S drag to capture · 2 talk or type the change · 3 ↩ image + note copied" width="100%">
 </p>
 
 ## What it does
@@ -91,9 +91,12 @@ Capipaste/
   Recorder.swift     microphone list (Core Audio) and 16 kHz capture
   STT.swift          model catalog, downloads, transcription with retry
   Output.swift       flattens strokes onto the PNG, saves, writes the clipboard
+brand/
+  BRAND.md           brand bible: palette, type, the dither engine, motion
+  make-art.swift     the engine (icon, mark, dot map, loops, banners, steps)
+  assets/            generated brand assets
 design/
-  make-art.swift     renders the e-ink icon, banners and step strip
-  mockup.html        UI reference
+  mockup.html        app UI reference
 scripts/install.sh
 ```
 
@@ -107,12 +110,12 @@ open -n /Applications/Capipaste.app --args -demo design/sample-shot.png -snapsho
 open -n /Applications/Capipaste.app --args -sttfile speech.aiff                         # transcribe a file with the active model
 ```
 
-### Artwork
+### Brand and artwork
+
+Every mark, banner and animation comes from one Swift script; the palette, type, motion and usage rules live in [`brand/BRAND.md`](brand/BRAND.md).
 
 ```sh
-swift design/make-art.swift icon   design/icon-acorn.png 1024
-swift design/make-art.swift banner docs/banner.png 1600 560 "Capipaste" "Screenshot, talk, paste." "⌘⇧S · local speech-to-text · macOS"
-swift design/make-art.swift steps  docs/steps.png 1600 520
+brand/make.sh    # rebuilds all brand assets, the app icon and the site copies
 ```
 
 ## License

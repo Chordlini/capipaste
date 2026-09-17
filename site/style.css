@@ -267,9 +267,13 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
 
 /* ---------- responsive ---------- */
 @media (max-width: 900px) {
-  :root { --nav-h: 72px; }
-  .nav ul { display: none; }
-  .cta { margin-left: auto; min-width: 150px; height: 52px; font-size: 14px; }
+  :root { --nav-h: 76px; }
+  .nav .wrap { gap: 12px; }
+  .nav ul { margin-left: auto; }
+  .key, .cta { height: 50px; font-size: 14px; padding: 0 11px 7px; border-radius: 9px; }
+  .key i, .cta i { font-size: 13px; }
+  .key { min-width: 86px; }
+  .cta { min-width: 150px; }
   .brand-word { font-size: 32px; }
   .how { grid-template-columns: 1fr; }
   .demo-col { order: -1; position: sticky; top: var(--nav-h); align-self: start; z-index: 2; background: var(--paper); padding: 10px 0 14px; }
@@ -288,7 +292,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
   .specs { grid-template-columns: 1fr; }
   .spec { grid-template-columns: 110px minmax(0, 1fr); gap: 14px; }
 }
-@media (max-width: 360px) { .brand-word { font-size: 26px; } .cta { min-width: 0; } .cta span { font-size: 13px; } }
+@media (max-width: 420px) { .brand-word { font-size: 26px; } .key { min-width: 62px; } .cta { min-width: 116px; } .key span, .cta span { font-size: 12.5px; } }
 @media (max-width: 520px) {
   .fake .cards { grid-template-columns: repeat(2, 1fr); }
   .fake .cards div:nth-child(3) { display: none; }
