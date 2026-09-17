@@ -4,6 +4,7 @@
 // usage:
 //   swift design/make-art.swift icon   <out.png> [px]
 //   swift design/make-art.swift mark   <out.png> [px]      (acorn only, transparent)
+//   swift design/make-art.swift dots   <out.json> [grid]  (dot map for code-drawn logos)
 //   swift design/make-art.swift talk   <out.gif> [px] [--spin]   (talking + blinking loop, optionally rotating)
 //   swift design/make-art.swift banner <out.png> <width> <height> <title> <subtitle> [caption]
 //   swift design/make-art.swift steps  <out.png> <width> <height>
@@ -431,6 +432,17 @@ case "talk":
         CGImageDestinationAddImage(gif, ctx.makeImage()!, frameProps)
     }
     precondition(CGImageDestinationFinalize(gif), "GIF write failed")
+
+case "dots":
+    // Acorn as a JSON array of "01" rows at a coarse grid, for crisp small logos drawn in code.
+    let grid = args.count > 3 ? Int(args[3])! : 48
+    let field = Field(cols: grid, rows: grid)
+    field.inBox(CGRect(x: 0, y: -1, width: CGFloat(grid), height: CGFloat(grid))) { drawAcorn($0) }
+    let all = field.dither()
+    let ys = all.indices.filter { all[$0].contains(true) }
+    let xs = (0..<grid).filter { x in all.contains { $0[x] } }
+    let rows = ys.map { y in String(xs.map { all[y][$0] ? "1" : "0" }) }
+    try! JSONSerialization.data(withJSONObject: rows).write(to: URL(fileURLWithPath: out))
 
 case "banner":
     let (w, h) = (Int(args[3])!, Int(args[4])!)

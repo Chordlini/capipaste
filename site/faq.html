@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capipaste — FAQ</title>
+<meta name="description" content="Answers about Capipaste: privacy, where pasted screenshots go, speech models, drawing and install.">
+<meta property="og:title" content="Capipaste — FAQ">
+<meta property="og:image" content="assets/social.png">
+<link rel="icon" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="Capipaste home"><canvas class="logo" data-size="40" aria-hidden="true"></canvas><span>Capipaste</span></a>
+    <ul>
+      <li><a href="index.html#features">Features</a></li>
+      <li><a href="index.html#cases">Use cases</a></li>
+      <li><a href="index.html#specs">Specs</a></li>
+      <li><a href="faq.html" aria-current="page">FAQ</a></li>
+    </ul>
+    <a class="btn" href="https://github.com/Chordlini/capipaste">Get Capipaste
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
+    </a>
+  </div>
+</nav>
+
+<main>
+  <header class="page-head">
+    <div class="wrap">
+      <h1 class="print">Questions,<br>answered.</h1>
+      <p>Everything about privacy, pasting, speech models and setup. Still stuck? Open an issue on GitHub.</p>
+    </div>
+  </header>
+
+  <div class="wrap faq-groups">
+    <nav aria-label="FAQ topics">
+      <a href="#privacy">Privacy</a>
+      <a href="#pasting">Pasting</a>
+      <a href="#speech">Speech</a>
+      <a href="#drawing">Capture &amp; drawing</a>
+      <a href="#setup">Setup</a>
+    </nav>
+    <div>
+      <section class="faq-group">
+        <h2 id="privacy">Privacy</h2>
+        <div class="faq">
+          <details open>
+            <summary>Does my voice leave my Mac?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">No. Every model runs locally on the Neural Engine. The only network traffic is the one-time download of a model you choose from the menu bar.</div>
+          </details>
+          <details>
+            <summary>Are my screenshots uploaded anywhere?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">No. They stay on your Mac in <code>~/Pictures/Capipaste</code> and on your clipboard until you paste them somewhere yourself.</div>
+          </details>
+          <details>
+            <summary>Why does it need Screen Recording permission?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">macOS requires it for any app that captures the screen. Capipaste only captures when you press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd> and drag.</div>
+          </details>
+        </div>
+      </section>
+
+      <section class="faq-group">
+        <h2 id="pasting">Pasting</h2>
+        <div class="faq">
+          <details open>
+            <summary>Why does the terminal get a file path instead of the image?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">Claude Code attaches an image from the clipboard and drops any text next to it. So when you capture from a terminal, Capipaste copies your note with <code>[screenshot: /path.png]</code>, and the agent opens the file itself.</div>
+          </details>
+          <details>
+            <summary>Which terminals count?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">cmux, Ghostty, Terminal, iTerm2, Warp, WezTerm, kitty and Alacritty. Capipaste checks which app was in front when you pressed the shortcut.</div>
+          </details>
+          <details>
+            <summary>What do chat apps get?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">The annotated PNG and your note together. Codex pastes both. Some chat boxes keep only the image, and the saved file is always there if you need it.</div>
+          </details>
+          <details>
+            <summary>Where does focus go after I press Return?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">Back to the app you captured from, so <kbd>⌘</kbd><kbd>V</kbd> lands right away.</div>
+          </details>
+        </div>
+      </section>
+
+      <section class="faq-group">
+        <h2 id="speech">Speech</h2>
+        <div class="faq">
+          <details open>
+            <summary>Which speech model should I pick?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">Nemotron 3.5 Streaming if you want words to appear as you speak. Parakeet 110M for the smallest, fastest English model. Cohere Transcribe for the best accuracy on longer notes. Apple Speech works with no download at all.</div>
+          </details>
+          <details>
+            <summary>Can I type instead of talk?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">Yes. Click the note and type. Listening stops the moment you type, so dictation never overwrites your edits.</div>
+          </details>
+          <details>
+            <summary>What if it mishears me?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">Edit the text before pressing Return. If a transcript fails outright, Capipaste retries once, then keeps the card open and asks you to say it again.</div>
+          </details>
+          <details>
+            <summary>Can I use a different microphone?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">Pick any input from the Microphone list in the menu bar: the built-in mic, a USB mic or AirPods.</div>
+          </details>
+        </div>
+      </section>
+
+      <section class="faq-group">
+        <h2 id="drawing">Capture &amp; drawing</h2>
+        <div class="faq">
+          <details open>
+            <summary>How do I capture a whole window?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">After <kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd>, press Space to switch the picker to window mode, then click the window.</div>
+          </details>
+          <details>
+            <summary>How do I erase part of a line?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">Press <kbd>E</kbd> and drag over it. The eraser removes only what's under its circle. <kbd>⌘</kbd><kbd>Z</kbd> undoes a whole drag.</div>
+          </details>
+          <details>
+            <summary>Can I zoom in on small text?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">Pinch on the trackpad or use <kbd>⌘</kbd><kbd>+</kbd> and <kbd>⌘</kbd><kbd>−</kbd>. Two-finger scroll pans, <kbd>⌘</kbd><kbd>0</kbd> resets. Anything you draw while zoomed lands in the right spot on the saved image.</div>
+          </details>
+          <details>
+            <summary>Where do my screenshots go?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">Into <code>~/Pictures/Capipaste</code>, with your drawings flattened in at full resolution. Open the folder from the menu bar.</div>
+          </details>
+        </div>
+      </section>
+
+      <section class="faq-group">
+        <h2 id="setup">Setup</h2>
+        <div class="faq">
+          <details open>
+            <summary>What do I need?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">An Apple Silicon Mac on macOS 26. Building from source also needs Xcode and XcodeGen.</div>
+          </details>
+          <details>
+            <summary>Can I change the shortcut?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">It's <kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd> today. A shortcut recorder is on the list.</div>
+          </details>
+          <details>
+            <summary>Is it free?<span class="plus" aria-hidden="true"></span></summary>
+            <div class="ans">Yes. Capipaste is MIT licensed and the source is on GitHub.</div>
+          </details>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<!-- FINAL -->
+  <section class="final">
+    <canvas class="bubbles" id="bubbles" aria-hidden="true"></canvas>
+    <div class="wrap">
+      <img class="talker" src="assets/acorn-talk.gif" alt="" width="120" height="120">
+      <canvas id="wordmark" width="900" height="200" role="img" aria-label="Capipaste"></canvas>
+      <p>Free, open source, and one shortcut away.</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/Chordlini/capipaste">Get Capipaste
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
+        </a>
+        <a class="btn ghost" href="https://github.com/Chordlini/capipaste#readme">Read the docs</a>
+      </div>
+    </div>
+  </section>
+
+
+<footer>
+  <div class="wrap">
+    <span>Capipaste · MIT</span>
+    <span>Speech by FluidAudio · made for people who talk to their agents</span>
+  </div>
+</footer>
+
+<script src="common.js"></script>
+</body>
+</html>
