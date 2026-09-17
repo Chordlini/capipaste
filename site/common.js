@@ -243,11 +243,18 @@ addEventListener("resize", () => { if (innerWidth !== titleWidth) { titleWidth =
     .map(l => [l, l.hash && location.pathname.split('/').pop() !== 'faq.html' ? document.querySelector(l.hash) : null])
     .filter(([, t]) => t);
   if (!targets.length) return;
-  const spy = new IntersectionObserver(entries => {
-    for (const e of entries) {
-      const link = targets.find(([, t]) => t === e.target)?.[0];
-      if (link && e.isIntersecting) targets.forEach(([l]) => l.classList.toggle('active', l === link));
+  // The key for a section stays pressed while that section owns the middle of the screen;
+  // above the first one (the hero and how-it-works) nothing is pressed.
+  const spy = () => {
+    const line = innerHeight * 0.45;
+    let current = null;
+    for (const [link, t] of targets) {
+      const r = t.getBoundingClientRect();
+      if (r.top <= line && r.bottom > line) current = link;
     }
-  }, { rootMargin: '-40% 0px -55% 0px' });
-  targets.forEach(([, t]) => spy.observe(t));
+    targets.forEach(([l]) => l.classList.toggle('active', l === current));
+  };
+  addEventListener('scroll', spy, { passive: true });
+  addEventListener('resize', spy);
+  spy();
 })();
