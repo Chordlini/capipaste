@@ -258,3 +258,26 @@ addEventListener("resize", () => { if (innerWidth !== titleWidth) { titleWidth =
   addEventListener('resize', spy);
   spy();
 })();
+
+/* ---------- anchors: scroll without leaving #hash in the URL, so a refresh starts at the top ---------- */
+(function cleanAnchors() {
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  const clearHash = () => history.replaceState(null, '', location.pathname + location.search);
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href^="#"]');
+    if (!a) return;
+    const target = document.querySelector(a.getAttribute('href'));
+    if (!target) return;
+    e.preventDefault();
+    target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
+  });
+  // Arriving with a hash (e.g. from the FAQ page): honour it once, then drop it.
+  if (location.hash && document.querySelector(location.hash)) {
+    const target = document.querySelector(location.hash);
+    clearHash();
+    addEventListener('load', () => target.scrollIntoView());
+  } else {
+    if (location.hash) clearHash();
+    addEventListener('load', () => scrollTo(0, 0));
+  }
+})();
