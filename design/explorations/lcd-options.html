@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capipaste LCD Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+:root {
+  --glass: rgba(24, 30, 36, 0.74);
+  --glass-edge: rgba(255, 255, 255, 0.10);
+  --well: rgba(255, 255, 255, 0.05);
+  --text: #E8EEF2;
+  --muted: #8A99A6;
+  --wall: radial-gradient(120% 90% at 10% 0%, #1d2b3a, transparent 60%), radial-gradient(90% 90% at 100% 100%, #3a2f4f, transparent 60%), #0f151b;
+  --shadow: 0 24px 60px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.3);
+}
+.light {
+  --glass: rgba(248, 250, 251, 0.80);
+  --glass-edge: rgba(0, 0, 0, 0.08);
+  --well: rgba(0, 0, 0, 0.04);
+  --text: #14202A;
+  --muted: #66747F;
+  --wall: radial-gradient(120% 90% at 10% 0%, #cfdde6, transparent 60%), radial-gradient(90% 90% at 100% 100%, #e9dfee, transparent 60%), #eef2f5;
+  --shadow: 0 24px 60px rgba(30,45,60,.22), 0 2px 8px rgba(30,45,60,.12);
+}
+* { box-sizing: border-box; margin: 0; }
+body { font: 13px/1.45 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: #0c1116; -webkit-font-smoothing: antialiased; }
+.row { padding: 44px 48px; background: var(--wall); display: flex; gap: 40px; align-items: flex-start; }
+.col { display: flex; flex-direction: column; gap: 12px; }
+.name { color: var(--muted); font-size: 12px; padding-left: 4px; }
+
+.card {
+  width: 520px; padding: 10px; border-radius: 16px; color: var(--text);
+  background: var(--glass); border: 1px solid var(--glass-edge); box-shadow: var(--shadow);
+  backdrop-filter: blur(40px) saturate(1.6); -webkit-backdrop-filter: blur(40px) saturate(1.6);
+}
+.shot { border-radius: 10px; overflow: hidden; height: 300px; background: url(sample-shot.png) top left / cover; position: relative; }
+.shot svg { position: absolute; inset: 0; }
+.text { padding: 12px 6px 4px; min-height: 52px; font-size: 13.5px; }
+.text.dim { color: var(--muted); }
+.foot { display: flex; justify-content: flex-end; gap: 16px; padding: 6px 6px 2px; color: var(--muted); font-size: 11.5px; }
+kbd { font: inherit; font-size: 11px; color: var(--text); border: 1px solid var(--glass-edge); background: var(--well); border-radius: 5px; padding: 1px 6px; margin-right: 4px; }
+
+/* ---------- shared LCD strip ---------- */
+.lcd {
+  margin-top: 10px; height: 56px; border-radius: 10px; position: relative; overflow: hidden;
+  display: flex; align-items: center; gap: 12px; padding: 0 12px;
+  backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4);
+}
+.lcd .px { flex: 1; height: 100%; display: flex; align-items: center; justify-content: space-between; }
+.lcd .c { display: flex; flex-direction: column; justify-content: center; }
+.lcd .c i { display: block; }
+
+/* A · Nokia 3310 */
+.nokia { background: rgba(199, 240, 216, 0.80); color: #43523D;
+  box-shadow: inset 0 0 0 1px rgba(67,82,61,.25), inset 0 1px 6px rgba(67,82,61,.18); }
+.nokia::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(rgba(67,82,61,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(67,82,61,.06) 1px, transparent 1px);
+  background-size: 4px 4px; }
+.nokia .t { font-family: Silkscreen, monospace; font-size: 15px; letter-spacing: 1px; min-width: 58px; }
+.nokia .m { font-family: Silkscreen, monospace; font-size: 10px; text-align: right; line-height: 1.2; }
+.nokia .c { gap: 1px; }
+.nokia .c i { width: 4px; height: 4px; background: #43523D; }
+.nokia .c i.g { background: rgba(67,82,61,.10); }
+.dark .nokia { box-shadow: inset 0 0 0 1px rgba(67,82,61,.25), 0 0 22px rgba(199,240,216,.18); }
+
+/* B · Pager */
+.pager { background: rgba(181, 196, 139, 0.84); color: #1F2A12;
+  box-shadow: inset 0 0 0 2px rgba(31,42,18,.35), inset 0 2px 8px rgba(0,0,0,.18); }
+.pager .seg { position: relative; min-width: 76px; height: 30px; }
+.pager .seg svg { position: absolute; inset: 0; }
+.pager .c { gap: 2px; }
+.pager .c i { width: 3px; height: 3px; border-radius: 50%; background: #1F2A12; }
+.pager .c i.g { background: rgba(31,42,18,.12); }
+.pager .m { font-family: VT323, monospace; font-size: 17px; line-height: .95; text-align: right; }
+.pager .m b { display: block; font-weight: 400; font-size: 13px; opacity: .6; }
+.dark .pager { box-shadow: inset 0 0 0 2px rgba(31,42,18,.35), 0 0 24px rgba(181,196,139,.2); }
+
+/* C · Game Boy */
+.gb { background: rgba(155, 188, 15, 0.88); color: #0F380F; border-radius: 8px;
+  box-shadow: inset 3px 3px 0 rgba(15,56,15,.35), inset -2px -2px 0 rgba(255,255,255,.25); }
+.gb .t { font-family: "Press Start 2P", monospace; font-size: 11px; min-width: 64px; }
+.gb .m { font-family: "Press Start 2P", monospace; font-size: 7px; line-height: 1.6; text-align: right; }
+.gb .c { gap: 1px; }
+.gb .c i { width: 6px; height: 5px; background: #0F380F; }
+.gb .c i.g { background: rgba(48,98,48,.22); }
+.gb .c i.h { background: #306230; }
+.dark .gb { box-shadow: inset 3px 3px 0 rgba(15,56,15,.35), inset -2px -2px 0 rgba(255,255,255,.25), 0 0 24px rgba(155,188,15,.22); }
+
+.icon { display: inline-block; vertical-align: -1px; }
+.blink { animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<script>
+const variants = [
+  { key: 'nokia', label: 'A · Nokia 3310', cols: 44, rows: 4 },
+  { key: 'pager', label: 'B · Pager', cols: 46, rows: 4 },
+  { key: 'gb', label: 'C · Game Boy', cols: 30, rows: 3 },
+];
+
+function rnd(seed) { let s = seed; return () => (s = (s * 9301 + 49297) % 233280) / 233280; }
+
+function columns(v, live, seed) {
+  const r = rnd(seed); let h = '';
+  for (let c = 0; c < v.cols; c++) {
+    const env = Math.sin((c / v.cols) * Math.PI) * 0.75 + 0.25;
+    const lvl = live ? Math.round((r() * 0.7 + 0.3) * env * v.rows) : 0;
+    let cells = '';
+    for (let i = v.rows; i >= -v.rows; i--) {
+      const lit = Math.abs(i) <= lvl && (i !== 0 || true) && (live || i === 0);
+      const half = v.key === 'gb' && lit && Math.abs(i) === lvl && lvl > 0;
+      cells += `<i class="${lit ? (half ? 'h' : '') : 'g'}"></i>`;
+    }
+    h += `<div class="c">${cells}</div>`;
+  }
+  return h;
+}
+
+// 7-segment digit, lit segments dark, unlit ghosted
+const SEG = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcfgd' };
+function digit(x, n) {
+  const on = n === null ? '' : SEG[n];
+  const s = (id, d) => `<path d="${d}" fill="${on.includes(id) ? '#1F2A12' : 'rgba(31,42,18,.13)'}"/>`;
+  return `<g transform="translate(${x},0) skewX(-6)">
+    ${s('a', 'M3 1h8l-2 2H5z')}${s('b', 'M12 2v11l-2-2V4z')}${s('c', 'M12 17v11l-2-2v-7z')}
+    ${s('d', 'M3 29h8l-2-2H5z')}${s('e', 'M2 17v11l2-2v-7z')}${s('f', 'M2 2v11l2-2V4z')}${s('g', 'M3 15h8l-1.5 1.2h-5z')}</g>`;
+}
+function seg(time) {
+  const d = time ? time.replace(':', '').split('').map(Number) : [null, null, null, null];
+  return `<svg viewBox="0 0 78 30" width="78" height="30">${digit(2, d[0])}${digit(18, d[1])}
+    <circle cx="36" cy="10" r="1.6" fill="#1F2A12"/><circle cx="36" cy="20" r="1.6" fill="#1F2A12"/>${digit(42, d[2])}${digit(58, d[3])}</svg>`;
+}
+
+const signal = c => `<svg class="icon" width="12" height="10" viewBox="0 0 12 10" fill="${c}"><rect x="0" y="7" width="2" height="3"/><rect x="3" y="5" width="2" height="5"/><rect x="6" y="3" width="2" height="7"/><rect x="9" y="0" width="2" height="10"/></svg>`;
+const mic = c => `<svg class="icon" width="8" height="11" viewBox="0 0 8 11" fill="${c}"><rect x="2" y="0" width="4" height="7"/><rect x="0" y="4" width="1" height="3"/><rect x="7" y="4" width="1" height="3"/><rect x="1" y="7" width="6" height="1"/><rect x="3" y="8" width="2" height="3"/></svg>`;
+
+function strip(v, state, seed) {
+  const live = state === 'listening';
+  const time = live ? '00:07' : state === 'finishing' ? '00:12' : null;
+  const cols = columns(v, live, seed);
+  if (v.key === 'nokia') return `<div class="lcd nokia">
+      <div class="t">${mic('#43523D')} <span class="${live ? '' : ''}">${time ?? '--:--'}</span></div>
+      <div class="px">${cols}</div>
+      <div class="m">${signal('#43523D')}<br>${state === 'finishing' ? '<span class="blink">Writing…</span>' : 'Nemotron'}</div></div>`;
+  if (v.key === 'pager') return `<div class="lcd pager">
+      <div class="seg">${seg(time)}</div>
+      <div class="px">${cols}</div>
+      <div class="m">${state === 'finishing' ? '<span class="blink">Transcribing</span>' : 'Nemotron'}<b>${live ? 'Listening' : state === 'finishing' ? 'Hold on' : 'Mic off'}</b></div></div>`;
+  return `<div class="lcd gb">
+      <div class="t">${time ?? '--:--'}</div>
+      <div class="px">${cols}</div>
+      <div class="m">${state === 'finishing' ? '<span class="blink">Writing</span>' : 'Nemotron'}<br>${live ? '● Rec' : '○ Off'}</div></div>`;
+}
+
+const marks = `<svg viewBox="0 0 500 300" preserveAspectRatio="none"><ellipse cx="120" cy="120" rx="95" ry="30" fill="none" stroke="#FF3B5C" stroke-width="3.5" transform="rotate(-3 120 120)"/></svg>`;
+
+function card(v, state, seed) {
+  const text = state === 'listening'
+    ? 'Make the README header bigger and move the badges under the title'
+    : state === 'finishing'
+      ? '<span class="dim">Make the README header bigger and move the badges under the title…</span>'
+      : '<span class="dim">Allow microphone access to dictate, or just type.</span>';
+  return `<div class="card">
+    <div class="shot">${marks}</div>
+    ${strip(v, state, seed)}
+    <div class="text">${text}</div>
+    <div class="foot"><span><kbd>↩</kbd>Copy</span><span><kbd>⇧↩</kbd>New line</span><span><kbd>esc</kbd>Cancel</span></div>
+  </div>`;
+}
+
+let seed = 3;
+for (const v of variants) {
+  for (const theme of ['dark', 'light']) {
+    const row = document.createElement('section');
+    row.className = `row ${theme}`;
+    row.id = `${v.key}-${theme}`;
+    for (const state of ['listening', 'finishing', 'off']) {
+      row.insertAdjacentHTML('beforeend', `<div class="col">${card(v, state, seed += 7)}<div class="name">${v.label} · ${theme} · ${state}</div></div>`);
+    }
+    document.body.appendChild(row);
+  }
+}
+</script>
+</body>
+</html>

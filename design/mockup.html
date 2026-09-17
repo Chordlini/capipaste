@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capipaste Mockups</title>
+<style>
+:root {
+  --glass: rgba(24, 30, 36, 0.74);
+  --glass-edge: rgba(255, 255, 255, 0.10);
+  --well: rgba(255, 255, 255, 0.05);
+  --text: #E8EEF2;
+  --muted: #8A99A6;
+  --accent: #3DD9C1;
+  --accent-soft: rgba(61, 217, 193, 0.16);
+  --ink: #FF3B5C;
+  --wall-a: #1d2b3a;
+  --wall-b: #3a2f4f;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.light {
+  --glass: rgba(248, 250, 251, 0.80);
+  --glass-edge: rgba(0, 0, 0, 0.08);
+  --well: rgba(0, 0, 0, 0.04);
+  --text: #14202A;
+  --muted: #66747F;
+  --accent: #0A8F7E;
+  --accent-soft: rgba(10, 143, 126, 0.12);
+  --wall-a: #cfdde6;
+  --wall-b: #e9dfee;
+  --shadow: 0 24px 60px rgba(30, 45, 60, 0.22), 0 2px 8px rgba(30, 45, 60, 0.12);
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  background: #0c1116;
+  color: #E8EEF2;
+  -webkit-font-smoothing: antialiased;
+}
+.board {
+  padding: 56px 48px;
+  background: radial-gradient(120% 90% at 10% 0%, var(--wall-a), transparent 60%),
+              radial-gradient(90% 90% at 100% 100%, var(--wall-b), transparent 60%),
+              #0f151b;
+  display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start;
+}
+.board.light { background: radial-gradient(120% 90% at 10% 0%, var(--wall-a), transparent 60%),
+              radial-gradient(90% 90% at 100% 100%, var(--wall-b), transparent 60%), #eef2f5; }
+.state { display: flex; flex-direction: column; gap: 14px; }
+.caption { color: var(--muted); font-size: 12px; padding-left: 4px; }
+
+/* ---------- capture card ---------- */
+.card {
+  width: 520px;
+  background: var(--glass);
+  backdrop-filter: blur(40px) saturate(1.6);
+  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  border: 1px solid var(--glass-edge);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 10px;
+  color: var(--text);
+  position: relative;
+}
+.shot {
+  position: relative; border-radius: 10px; overflow: hidden;
+  aspect-ratio: 16 / 10; background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);
+}
+.shot svg.marks { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tools {
+  position: absolute; top: 10px; right: 10px;
+  display: flex; gap: 2px; padding: 3px;
+  background: rgba(20, 26, 32, 0.78);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-radius: 999px; border: 1px solid rgba(255,255,255,0.12);
+}
+.tool {
+  width: 30px; height: 30px; border-radius: 999px; border: 0;
+  display: grid; place-items: center; background: transparent; color: #cfd8df;
+}
+.tool svg { width: 16px; height: 16px; }
+.tool.on { background: var(--ink); color: #fff; }
+.tool.on.erase { background: #fff; color: #14202A; }
+
+.wave {
+  margin-top: 10px; height: 52px; border-radius: 10px;
+  background: var(--well);
+  display: flex; align-items: center; gap: 12px; padding: 0 12px;
+}
+.rec { display: flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; min-width: 50px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 3px rgba(255,59,92,0.18); }
+.bars { flex: 1; height: 38px; display: flex; align-items: center; justify-content: space-between; }
+.col { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 100%; }
+.col i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent), 0 0 2px var(--accent); }
+.col i.f { opacity: 0.12; box-shadow: none; }
+.chip {
+  font-size: 11px; color: var(--accent); background: var(--accent-soft);
+  padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+}
+.wave.paused .col i { background: var(--muted); box-shadow: none; }
+.wave.paused .dot { background: var(--muted); box-shadow: none; }
+
+.text {
+  padding: 12px 6px 4px; min-height: 58px; font-size: 13.5px; color: var(--text);
+}
+.text .ph { color: var(--muted); }
+.caret { display: inline-block; width: 1.5px; height: 1.05em; background: var(--accent); vertical-align: -2px; margin-left: 1px; }
+.shimmer {
+  background: linear-gradient(90deg, var(--muted) 0%, var(--text) 50%, var(--muted) 100%);
+  background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.foot {
+  display: flex; justify-content: flex-end; gap: 16px; padding: 6px 6px 2px;
+  color: var(--muted); font-size: 11.5px;
+}
+kbd {
+  font: inherit; font-size: 11px; color: var(--text);
+  border: 1px solid var(--glass-edge); background: var(--well);
+  border-radius: 5px; padding: 1px 6px; margin-right: 4px;
+}
+.toast {
+  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(20, 26, 32, 0.86); color: #fff;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  padding: 10px 16px; border-radius: 999px; font-weight: 500;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+.toast svg { width: 16px; height: 16px; color: #3DD9C1; }
+.dim .shot, .dim .wave, .dim .text { opacity: 0.45; }
+
+/* ---------- menu ---------- */
+.menubar {
+  width: 360px; height: 26px; border-radius: 8px 8px 0 0;
+  background: rgba(30, 36, 42, 0.6); display: flex; justify-content: flex-end; align-items: center;
+  gap: 14px; padding: 0 12px; color: #e8eef2;
+}
+.light .menubar { background: rgba(255,255,255,0.55); color: #14202A; }
+.menubar .glyph { width: 18px; height: 18px; border-radius: 4px; background: rgba(255,255,255,0.18); display: grid; place-items: center; }
+.light .menubar .glyph { background: rgba(0,0,0,0.1); }
+.menu {
+  width: 290px; margin-left: 58px; margin-top: 4px;
+  background: var(--glass); color: var(--text);
+  backdrop-filter: blur(40px) saturate(1.6); -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  border: 1px solid var(--glass-edge); border-radius: 12px; box-shadow: var(--shadow);
+  padding: 5px;
+}
+.mi { display: flex; align-items: center; gap: 8px; padding: 4px 9px; border-radius: 6px; min-height: 24px; }
+.mi .k { margin-left: auto; color: var(--muted); }
+.mi.hl { background: var(--accent); color: #062a24; }
+.light .mi.hl { color: #fff; }
+.mi.hl .k { color: inherit; opacity: 0.75; }
+.sep { height: 1px; background: var(--glass-edge); margin: 5px 9px; }
+.hd { font-size: 11px; color: var(--muted); padding: 4px 9px 2px; }
+.check { width: 12px; color: var(--accent); }
+.mi.hl .check { color: inherit; }
+.sub { color: var(--muted); font-size: 11px; }
+.mi .size { margin-left: auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.dl { margin-left: auto; font-size: 11px; color: var(--accent); }
+.bar { height: 3px; border-radius: 3px; background: var(--well); margin: 2px 9px 6px 29px; overflow: hidden; }
+.bar b { display: block; height: 100%; width: 62%; background: var(--accent); }
+.trash { color: var(--muted); margin-left: 8px; }
+.model { display: flex; flex-direction: column; }
+</style>
+</head>
+<body>
+
+<template id="shot">
+  <!-- fake app being captured -->
+  <svg viewBox="0 0 500 312" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <rect width="500" height="312" fill="#f7f8fa"/>
+    <rect width="500" height="38" fill="#ffffff"/>
+    <rect y="38" width="500" height="1" fill="#e6e9ee"/>
+    <circle cx="22" cy="19" r="8" fill="#6c5ce7"/>
+    <rect x="38" y="14" width="64" height="10" rx="3" fill="#2d3440"/>
+    <rect x="300" y="15" width="40" height="8" rx="3" fill="#aab2bd"/>
+    <rect x="352" y="15" width="40" height="8" rx="3" fill="#aab2bd"/>
+    <rect x="410" y="10" width="72" height="18" rx="9" fill="#6c5ce7"/>
+    <rect x="24" y="62" width="210" height="16" rx="4" fill="#2d3440"/>
+    <rect x="24" y="86" width="160" height="9" rx="3" fill="#aab2bd"/>
+    <rect x="24" y="116" width="140" height="84" rx="10" fill="#fff" stroke="#e6e9ee"/>
+    <rect x="36" y="130" width="50" height="8" rx="3" fill="#aab2bd"/>
+    <rect x="36" y="148" width="80" height="18" rx="4" fill="#2d3440"/>
+    <path d="M36 186 L60 178 L84 182 L108 170 L150 174" stroke="#00b894" stroke-width="2.5" fill="none"/>
+    <rect x="180" y="116" width="140" height="84" rx="10" fill="#fff" stroke="#e6e9ee"/>
+    <rect x="192" y="130" width="50" height="8" rx="3" fill="#aab2bd"/>
+    <rect x="192" y="148" width="70" height="18" rx="4" fill="#2d3440"/>
+    <path d="M192 176 L216 184 L240 180 L264 188 L306 186" stroke="#e17055" stroke-width="2.5" fill="none"/>
+    <rect x="336" y="116" width="140" height="84" rx="10" fill="#fff" stroke="#e6e9ee"/>
+    <rect x="348" y="130" width="50" height="8" rx="3" fill="#aab2bd"/>
+    <rect x="348" y="148" width="90" height="18" rx="4" fill="#2d3440"/>
+    <rect x="348" y="178" width="110" height="8" rx="4" fill="#dfe6e9"/>
+    <rect x="348" y="178" width="72" height="8" rx="4" fill="#6c5ce7"/>
+    <rect x="24" y="220" width="452" height="72" rx="10" fill="#fff" stroke="#e6e9ee"/>
+    <rect x="36" y="236" width="120" height="8" rx="3" fill="#2d3440"/>
+    <rect x="36" y="254" width="300" height="7" rx="3" fill="#cdd3da"/>
+    <rect x="36" y="268" width="250" height="7" rx="3" fill="#cdd3da"/>
+  </svg>
+</template>
+
+<template id="tools">
+  <div class="tools">
+    <button class="tool" data-t="draw" aria-label="Draw"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2.5l3 3L6 13H3v-3z"/></svg></button>
+    <button class="tool erase" data-t="erase" aria-label="Erase"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 13.5h7.5M3 10.5l6.5-6.5 3.5 3.5L7.5 13H5z"/></svg></button>
+    <button class="tool" aria-label="Undo"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3.5L2.5 6.5l3 3"/><path d="M2.5 6.5H10a3.5 3.5 0 010 7H7"/></svg></button>
+  </div>
+</template>
+
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <g id="marks">
+      <ellipse cx="94" cy="160" rx="72" ry="38" fill="none" stroke="#FF3B5C" stroke-width="3.5" stroke-linecap="round" transform="rotate(-4 94 160)"/>
+      <path d="M478 98 C 470 130, 458 150, 440 168" stroke="#FF3B5C" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+      <path d="M438 154 L 439 170 L 454 166" stroke="#FF3B5C" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </defs>
+</svg>
+
+<script>
+// Build the mockup board: every state, in dark and light.
+const T = {
+  listen: { tool: null, rec: '0:07', live: true,
+    text: 'Make the header sticky and give the Upgrade button more breathing room', caret: true },
+  draw: { tool: 'draw', rec: '0:12', live: true, marks: true,
+    text: 'Make the header sticky and give the Upgrade button more breathing room. The revenue card chart is clipping on the left', caret: true },
+  erase: { tool: 'erase', rec: '0:15', live: true, marks: 'partial',
+    text: 'Make the header sticky and give the Upgrade button more breathing room. The revenue card chart is clipping on the left' },
+  transcribing: { tool: null, rec: '0:18', paused: true, marks: true, shimmer: true,
+    text: 'Make the header sticky and give the Upgrade button more breathing room…' },
+  copied: { tool: null, rec: '0:18', paused: true, marks: true, copied: true,
+    text: 'Make the header sticky and give the Upgrade button more breathing room. The revenue card chart is clipping on the left.' },
+  empty: { tool: null, rec: '0:00', live: true, empty: true },
+};
+const labels = {
+  empty: 'Card opens, listening',
+  listen: 'Speaking',
+  draw: 'Drawing (D)',
+  erase: 'Erasing (E)',
+  transcribing: 'Finishing transcript',
+  copied: 'Copied after ↩',
+};
+
+function rnd(seed) { let s = seed; return () => (s = (s * 9301 + 49297) % 233280) / 233280; }
+
+function waveform(live, seed) {
+  const r = rnd(seed), cols = 34, max = 3;
+  let h = '';
+  for (let c = 0; c < cols; c++) {
+    const env = Math.sin((c / cols) * Math.PI) * 0.7 + 0.3;
+    const lvl = live ? Math.max(0, Math.round((r() * 0.7 + 0.3) * env * max)) : 0;
+    let dots = '';
+    for (let i = max; i >= 1; i--) dots += `<i class="${i <= lvl ? '' : 'f'}"></i>`;
+    dots += `<i></i>`;
+    for (let i = 1; i <= max; i++) dots += `<i class="${i <= lvl ? '' : 'f'}"></i>`;
+    h += `<div class="col">${dots}</div>`;
+  }
+  return h;
+}
+
+function card(key, seed) {
+  const s = T[key];
+  const shot = document.getElementById('shot').innerHTML;
+  const tools = document.getElementById('tools').innerHTML;
+  let marks = '';
+  if (s.marks === true) marks = `<svg class="marks" viewBox="0 0 500 312" preserveAspectRatio="xMidYMid slice"><use href="#marks"/></svg>`;
+  if (s.marks === 'partial') marks = `<svg class="marks" viewBox="0 0 500 312" preserveAspectRatio="xMidYMid slice">
+    <ellipse cx="94" cy="160" rx="72" ry="38" fill="none" stroke="#FF3B5C" stroke-width="3.5" transform="rotate(-4 94 160)"/>
+    <circle cx="462" cy="134" r="11" fill="rgba(255,255,255,0.35)" stroke="#14202A" stroke-width="1.2"/></svg>`;
+  let text;
+  if (s.empty) text = `<span class="ph">Speak or type what should change<span class="caret"></span></span>`;
+  else if (s.shimmer) text = `<span class="shimmer">${s.text}</span>`;
+  else text = s.text + (s.caret ? '<span class="caret"></span>' : '');
+  return `
+  <div class="card ${s.copied ? 'dim' : ''}">
+    <div class="shot">${shot}${marks}${tools.replace(`data-t="${s.tool}"`, `data-t="${s.tool}" data-on`)}</div>
+    <div class="wave ${s.paused ? 'paused' : ''}">
+      <div class="rec"><span class="dot"></span>${s.rec}</div>
+      <div class="bars">${waveform(s.live, seed)}</div>
+      <span class="chip">Nemotron 3.5</span>
+    </div>
+    <div class="text">${text}</div>
+    <div class="foot"><span><kbd>↩</kbd>Copy</span><span><kbd>⇧↩</kbd>New line</span><span><kbd>esc</kbd>Cancel</span></div>
+    ${s.copied ? `<div class="toast"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3 3 7-7"/></svg>Copied image and text</div>` : ''}
+  </div>`;
+}
+
+function menu() {
+  return `
+  <div>
+    <div class="menubar"><span><svg width="15" height="12" viewBox="0 0 15 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.5 4.5a8.5 8.5 0 0112 0M3.8 7a5.2 5.2 0 017.4 0M6 9.4a2 2 0 013 0"/></svg></span><span class="glyph">${glyph()}</span><span>Wed 9:41</span></div>
+    <div class="menu">
+      <div class="mi hl">Capture <span class="k">⌘⇧S</span></div>
+      <div class="mi">Open captures folder</div>
+      <div class="sep"></div>
+      <div class="hd">Microphone</div>
+      <div class="mi"><span class="check">✓</span>MacBook Pro Microphone</div>
+      <div class="mi"><span class="check"></span>Shure MV7+</div>
+      <div class="mi"><span class="check"></span>AirPods Pro</div>
+      <div class="sep"></div>
+      <div class="hd">Speech model</div>
+      <div class="mi"><span class="check">✓</span><div class="model">Nemotron 3.5 Streaming<span class="sub">Live text while you talk</span></div><span class="size">1.2 GB</span><span class="trash"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M2 3h8M4.5 3V2h3v1M3 3l.5 7.5h5L9 3"/></svg></span></div>
+      <div class="mi"><span class="check"></span><div class="model">Parakeet 110M<span class="sub">Fastest, English only</span></div><span class="dl">62%</span></div>
+      <div class="bar"><b></b></div>
+      <div class="mi"><span class="check"></span><div class="model">Cohere Transcribe<span class="sub">Most accurate, slower</span></div><span class="dl">Download 1.8 GB</span></div>
+      <div class="mi"><span class="check"></span><div class="model">Apple Speech<span class="sub">Built in, no download</span></div></div>
+      <div class="sep"></div>
+      <div class="mi">Quit Capipaste <span class="k">⌘Q</span></div>
+    </div>
+  </div>`;
+}
+
+function glyph() {
+  // capture corners + two horn arcs
+  return `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+    <path d="M1 4V1h3M10 1h3v3M13 10v3h-3M4 13H1v-3"/><path d="M5 9c0-3 1-4.5 2-4.5S9 6 9 9"/></svg>`;
+}
+
+function board(theme) {
+  const b = document.createElement('section');
+  b.className = 'board ' + theme;
+  b.id = theme;
+  let i = 1;
+  for (const k of Object.keys(labels)) {
+    b.insertAdjacentHTML('beforeend', `<div class="state" id="${theme}-${k}">${card(k, 7 * i++)}<div class="caption">${labels[k]}</div></div>`);
+  }
+  b.insertAdjacentHTML('beforeend', `<div class="state" id="${theme}-menu">${menu()}<div class="caption">Menu bar</div></div>`);
+  document.body.appendChild(b);
+}
+board('dark');
+board('light');
+document.querySelectorAll('.tool[data-on]').forEach(t => t.classList.add('on'));
+</script>
+</body>
+</html>

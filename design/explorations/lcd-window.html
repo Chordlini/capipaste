@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capipaste LCD Window</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Press+Start+2P&family=VT323&family=Pixelify+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; }
+body { background: #0c1116; -webkit-font-smoothing: antialiased; }
+
+/* A busy desktop behind the cards so the frost is visible */
+.desk { position: relative; padding: 48px; display: flex; gap: 44px; align-items: flex-start; overflow: hidden; }
+.desk::before { content: ""; position: absolute; inset: -40px; z-index: 0;
+  background: url(sample-shot.png) center / 900px auto repeat, #222; filter: saturate(1.2); }
+.desk.dark::before { background: url(sample-shot.png) center / 900px auto repeat, #111; filter: brightness(.35) saturate(1.1); }
+.col { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px; }
+.name { font: 12px -apple-system, system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.55); padding: 3px 8px; border-radius: 6px; align-self: flex-start; }
+
+/* ---------- the whole card is the LCD ---------- */
+.card {
+  --ink: #43523D; --ghost: rgba(67,82,61,.12); --tint: rgba(199,240,216,.72); --edge: rgba(67,82,61,.35);
+  width: 520px; padding: 10px; border-radius: 16px; position: relative; color: var(--ink);
+  background: var(--tint);
+  backdrop-filter: blur(30px) saturate(1.3); -webkit-backdrop-filter: blur(30px) saturate(1.3);
+  box-shadow: 0 0 0 1px var(--edge), inset 0 1px 0 rgba(255,255,255,.35), 0 24px 60px rgba(0,0,0,.45);
+}
+/* faint LCD pixel grid over the whole panel */
+.card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background-image: linear-gradient(var(--ghost) 1px, transparent 1px), linear-gradient(90deg, var(--ghost) 1px, transparent 1px);
+  background-size: 4px 4px; opacity: .55; }
+.shot { position: relative; border-radius: 8px; overflow: hidden; height: 300px;
+  background: url(sample-shot.png) top left / cover; box-shadow: 0 0 0 2px var(--ink); }
+.shot > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.tools { position: absolute; top: 10px; right: 10px; display: flex; gap: 2px; padding: 3px;
+  background: var(--tint); backdrop-filter: blur(12px); border-radius: 6px; box-shadow: 0 0 0 2px var(--ink); }
+.tool { width: 28px; height: 28px; display: grid; place-items: center; color: var(--ink); border-radius: 3px; }
+.tool.on { background: var(--ink); color: var(--lit, #C7F0D8); }
+.tool svg { width: 16px; height: 16px; shape-rendering: crispEdges; }
+
+.strip { position: relative; margin-top: 10px; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 4px;
+  border-top: 2px dotted var(--edge); border-bottom: 2px dotted var(--edge); }
+.px { flex: 1; height: 100%; display: flex; align-items: center; justify-content: space-between; }
+.c { display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.c i { display: block; width: 4px; height: 4px; background: var(--ink); }
+.c i.g { background: var(--ghost); }
+.t { font-family: Silkscreen, monospace; font-size: 15px; letter-spacing: 1px; min-width: 70px; white-space: nowrap; }
+.m { font-family: Silkscreen, monospace; font-size: 10px; text-align: right; line-height: 1.25; white-space: nowrap; }
+.text { position: relative; padding: 12px 4px 6px; min-height: 58px; font-family: "Pixelify Sans", monospace; font-size: 17px; line-height: 1.3; }
+.text .caret { display: inline-block; width: 8px; height: 16px; background: var(--ink); vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+.foot { position: relative; display: flex; justify-content: flex-end; gap: 14px; padding: 4px 4px 0; font-family: Silkscreen, monospace; font-size: 10px; }
+kbd { font: inherit; padding: 1px 5px; margin-right: 5px; box-shadow: 0 0 0 1.5px var(--ink); border-radius: 2px; }
+.toast { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); font-family: Silkscreen, monospace; font-size: 13px;
+  background: var(--ink); color: var(--lit, #C7F0D8); padding: 8px 14px; border-radius: 4px; box-shadow: 0 0 0 3px var(--tint); }
+.blink { animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* B · Pager: yellow-green, round dot matrix, VT323 */
+.pager { --ink: #1F2A12; --ghost: rgba(31,42,18,.12); --tint: rgba(181,196,139,.76); --edge: rgba(31,42,18,.35); --lit: #C9D6A0; }
+.pager .c { gap: 2px; }
+.pager .c i { width: 3px; height: 3px; border-radius: 50%; }
+.pager .t, .pager .m, .pager .foot { font-family: VT323, monospace; }
+.pager .t { font-size: 26px; letter-spacing: 0; }
+.pager .m { font-size: 16px; line-height: 1; }
+.pager .foot { font-size: 15px; }
+.pager .text { font-family: VT323, monospace; font-size: 21px; line-height: 1.1; }
+
+/* C · Game Boy: deeper green, chunky */
+.gb { --ink: #0F380F; --ghost: rgba(48,98,48,.18); --tint: rgba(155,188,15,.74); --edge: rgba(15,56,15,.4); --lit: #9BBC0F; }
+.gb .c i { width: 6px; height: 5px; }
+.gb .t { font-family: "Press Start 2P", monospace; font-size: 11px; }
+.gb .m, .gb .foot { font-family: "Press Start 2P", monospace; font-size: 7px; line-height: 1.7; }
+.gb .text { font-family: "Pixelify Sans", monospace; font-size: 17px; }
+.gb::before { background-size: 5px 5px; }
+.gb .shot { box-shadow: 0 0 0 3px var(--ink), inset 0 0 0 1px rgba(0,0,0,.2); }
+</style>
+</head>
+<body>
+<script>
+const variants = [
+  { cls: 'nokia', label: 'A · Nokia 3310', cols: 44, rows: 4 },
+  { cls: 'pager', label: 'B · Pager', cols: 46, rows: 4 },
+  { cls: 'gb', label: 'C · Game Boy', cols: 30, rows: 3 },
+];
+function rnd(seed) { let s = seed; return () => (s = (s * 9301 + 49297) % 233280) / 233280; }
+function columns(v, live, seed) {
+  const r = rnd(seed); let h = '';
+  for (let c = 0; c < v.cols; c++) {
+    const env = Math.sin((c / v.cols) * Math.PI) * 0.75 + 0.25;
+    const lvl = live ? Math.round((r() * 0.7 + 0.3) * env * v.rows) : 0;
+    let cells = '';
+    for (let i = v.rows; i >= -v.rows; i--) cells += `<i class="${Math.abs(i) <= lvl ? '' : 'g'}"></i>`;
+    h += `<div class="c">${cells}</div>`;
+  }
+  return h;
+}
+// 12×12 pixel-art icons from bitmaps
+function icon(rows) {
+  let r = "";
+  rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === "#") r += `<rect x="${x}" y="${y}" width="1" height="1"/>`; }));
+  return `<svg viewBox="0 0 12 12" fill="currentColor">${r}</svg>`;
+}
+const pen = icon(["........##..", ".......####.", "......####..", ".....####...", "....####....", "...####.....", "..####......", ".####.......", ".###........", ".##.........", "............", "............"]);
+const eraser = icon(["............", "......##....", ".....####...", "....######..", "...######...", "..#.####....", ".#...##.....", ".#...#......", "..#.#.......", "...#........", "...#######..", "............"]);
+const undo = icon(["............", "...#........", "..##........", ".#########..", "..##......#.", "...#......#.", "..........#.", "..........#.", ".....#####..", "............", "............", "............"]);
+const signal = `<svg width="12" height="10" viewBox="0 0 12 10" fill="currentColor"><rect x="0" y="7" width="2" height="3"/><rect x="3" y="5" width="2" height="5"/><rect x="6" y="3" width="2" height="7"/><rect x="9" y="0" width="2" height="10"/></svg>`;
+const marks = `<svg viewBox="0 0 500 300" preserveAspectRatio="none"><ellipse cx="120" cy="120" rx="95" ry="30" fill="none" stroke="#FF3B5C" stroke-width="3.5" transform="rotate(-3 120 120)"/></svg>`;
+
+function card(v, state, seed) {
+  const live = state === 'listening';
+  const time = live ? '00:07' : state === 'copied' ? '00:12' : '--:--';
+  const text = live ? 'Make the README header bigger and move the badges under the title<span class="caret"></span>'
+    : state === 'copied' ? 'Make the README header bigger and move the badges under the title.'
+    : '<span style="opacity:.6">Allow microphone access to dictate, or just type.</span>';
+  const status = live ? 'Nemotron' : state === 'copied' ? 'Sent' : 'Mic off';
+  return `<div class="card ${v.cls}">
+    <div class="shot">${marks}
+      <div class="tools"><span class="tool on">${pen}</span><span class="tool">${eraser}</span><span class="tool">${undo}</span></div>
+    </div>
+    <div class="strip">
+      <div class="t">${time}</div>
+      <div class="px">${columns(v, live, seed)}</div>
+      <div class="m">${signal}<br>${status}</div>
+    </div>
+    <div class="text">${text}</div>
+    <div class="foot"><span><kbd>↩</kbd>Copy</span><span><kbd>⇧↩</kbd>New line</span><span><kbd>esc</kbd>Cancel</span></div>
+    ${state === 'copied' ? '<div class="toast">✓ Copied</div>' : ''}
+  </div>`;
+}
+
+let seed = 5;
+for (const v of variants) {
+  for (const theme of ['dark', 'light']) {
+    const row = document.createElement('section');
+    row.className = `desk ${theme}`;
+    row.id = `${v.cls}-${theme}`;
+    for (const state of ['listening', 'copied', 'off']) {
+      row.insertAdjacentHTML('beforeend', `<div class="col">${card(v, state, seed += 7)}<div class="name">${v.label} · ${theme} desktop · ${state}</div></div>`);
+    }
+    document.body.appendChild(row);
+  }
+}
+</script>
+</body>
+</html>
