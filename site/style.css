@@ -1,5 +1,5 @@
 :root {
-  --nav-h: 104px;
+  --nav-h: 92px;
   --paper: #F1F1EE;
   --panel: #E3E3DF;
   --panel-2: #D9D9D4;
@@ -42,50 +42,34 @@ img { display: block; max-width: 100%; }
 .brand { text-decoration: none; display: block; line-height: 0; }
 .brand-word { display: inline-block; font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: 0.015em; }
 /* key-row nav: each link is a numbered key; number keys jump there */
-.nav ul { display: flex; gap: 10px; list-style: none; padding: 0; margin-left: auto; font-size: 15px; align-items: center; }
-/* each link is a key cap: label on the face, shortcut number as a corner legend */
-.nav ul a.key {
-  position: relative; display: grid; place-items: center;
-  min-width: 96px; height: 44px; margin-bottom: -6px; padding: 0 16px;
-  border-radius: 9px; background: var(--paper);
-  box-shadow: inset 0 0 0 1.5px var(--ink), 0 4px 0 var(--ink);
-  transform: translateY(-2px);
-  text-decoration: none; color: var(--ink); font-weight: 600;
-  transition: transform .08s ease, box-shadow .08s ease, background .2s;
+.nav ul { display: flex; gap: 12px; list-style: none; padding: 0; margin-left: auto; align-items: center; }
+/* Mac keycaps: symbol above the label, like the keys on an Apple keyboard */
+.key, .cta {
+  position: relative; display: grid; align-content: end; gap: 2px;
+  height: 58px; padding: 0 14px 9px; border-radius: 10px;
+  text-decoration: none; font-size: 15px; font-weight: 600; line-height: 1.1;
+  transform: translateY(-3px);
+  transition: transform .09s ease, box-shadow .09s ease, background .2s;
 }
-.nav ul a.key i { position: absolute; top: 4px; left: 7px; font: 600 9px/1 var(--mono); font-style: normal; color: var(--ink-3); }
-.nav ul a.key span { padding-top: 1px; }
-.nav ul a.key:hover { transform: translateY(0); box-shadow: inset 0 0 0 1.5px var(--ink), 0 2px 0 var(--ink); }
-/* the section you're reading is a key held down */
-.nav ul a.key.active, .nav ul a.key[aria-current="page"], .nav ul a.key.pressed {
+.key i, .cta i { font-style: normal; font-size: 15px; line-height: 1; opacity: .75; }
+/* shift key */
+.key {
+  justify-items: start; min-width: 122px; color: var(--ink); background: var(--paper);
+  box-shadow: inset 0 0 0 1.5px var(--ink), 0 5px 0 var(--ink);
+}
+.key:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1.5px var(--ink), 0 3px 0 var(--ink); }
+.key:active, .key.pressed, .key[aria-current="page"] {
   transform: translateY(2px); box-shadow: inset 0 0 0 1.5px var(--ink), 0 0 0 var(--ink); background: var(--panel);
 }
-/* ISO Enter key CTA */
+/* return key */
 .cta {
-  position: relative; display: block; width: 188px; height: 70px; flex: none;
-  margin-bottom: 12px; /* the wide bar shares the FAQ key's optical row */
-  color: var(--paper); text-decoration: none; font-weight: 600; font-size: 15px;
+  justify-items: end; text-align: right; min-width: 188px; flex: none;
+  color: var(--paper); background: var(--ink);
+  box-shadow: 0 5px 0 #000, 0 12px 22px rgba(23,23,26,.16);
 }
-.cta .enter { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 10px 16px rgba(23,23,26,.16)); }
-.cta .lip { fill: #000; }
-.cta .cap { fill: var(--ink); transition: transform .08s ease; }
-.cta .cta-label { position: absolute; left: 0; right: 0; bottom: 12px; text-align: center; transition: transform .08s ease; white-space: nowrap; }
-.cta .cta-arrow { position: absolute; left: 0; width: 143px; top: 9px; height: 16px; shape-rendering: crispEdges; transition: transform .08s ease; }
-.cta:hover .cap, .cta:hover .cta-label, .cta:hover .cta-arrow { transform: translateY(2px); }
-.cta:active .cap, .cta:active .cta-label, .cta:active .cta-arrow { transform: translateY(4px); }
-.cta:focus-visible { outline: none; }
-.cta:focus-visible .cap { stroke: var(--paper); stroke-width: 2; }
-.btn {
-  display: inline-flex; align-items: center; gap: 12px;
-  background: var(--ink); color: var(--paper);
-  padding: 13px 24px; border-radius: 999px;
-  font-weight: 600; font-size: 16px; text-decoration: none;
-  transition: transform .2s ease, box-shadow .2s ease;
-}
-.btn:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(23,23,26,.18); }
-.btn svg { width: 18px; height: 18px; }
-.btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
-.menu-toggle { display: none; }
+.cta i { opacity: .85; }
+.cta:hover { transform: translateY(-1px); box-shadow: 0 3px 0 #000, 0 8px 16px rgba(23,23,26,.14); }
+.cta:active { transform: translateY(2px); box-shadow: 0 0 0 #000, 0 2px 6px rgba(23,23,26,.12); }
 
 /* ---------- hero ---------- */
 .hero { position: relative; padding-bottom: clamp(60px, 10vw, 120px); }
@@ -285,7 +269,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
 @media (max-width: 900px) {
   :root { --nav-h: 72px; }
   .nav ul { display: none; }
-  .cta { margin-left: auto; transform: scale(.78); transform-origin: right center; margin-right: -8px; }
+  .cta { margin-left: auto; min-width: 150px; height: 52px; font-size: 14px; }
   .brand-word { font-size: 32px; }
   .how { grid-template-columns: 1fr; }
   .demo-col { order: -1; position: sticky; top: var(--nav-h); align-self: start; z-index: 2; background: var(--paper); padding: 10px 0 14px; }
@@ -304,7 +288,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wr
   .specs { grid-template-columns: 1fr; }
   .spec { grid-template-columns: 110px minmax(0, 1fr); gap: 14px; }
 }
-@media (max-width: 360px) { .brand-word { font-size: 26px; } .cta { transform: scale(.66); } }
+@media (max-width: 360px) { .brand-word { font-size: 26px; } .cta { min-width: 0; } .cta span { font-size: 13px; } }
 @media (max-width: 520px) {
   .fake .cards { grid-template-columns: repeat(2, 1fr); }
   .fake .cards div:nth-child(3) { display: none; }
