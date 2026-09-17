@@ -54,7 +54,7 @@ img { display: block; max-width: 100%; }
   transition: transform .08s ease, box-shadow .08s ease, background .2s;
 }
 .nav ul a.key i { position: absolute; top: 4px; left: 7px; font: 600 9px/1 var(--mono); font-style: normal; color: var(--ink-3); }
-.nav ul a.key span { padding-top: 3px; }
+.nav ul a.key span { padding-top: 1px; }
 .nav ul a.key:hover { transform: translateY(0); box-shadow: inset 0 0 0 1.5px var(--ink), 0 2px 0 var(--ink); }
 /* the section you're reading is a key held down */
 .nav ul a.key.active, .nav ul a.key[aria-current="page"], .nav ul a.key.pressed {
@@ -68,8 +68,8 @@ img { display: block; max-width: 100%; }
 .cta .enter { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 10px 16px rgba(23,23,26,.16)); }
 .cta .lip { fill: #000; }
 .cta .cap { fill: var(--ink); transition: transform .08s ease; }
-.cta .cta-label { position: absolute; left: 22px; top: 10px; transition: transform .08s ease; white-space: nowrap; }
-.cta .cta-arrow { position: absolute; right: 22px; bottom: 22px; width: 22px; height: 16px; shape-rendering: crispEdges; transition: transform .08s ease; }
+.cta .cta-label { position: absolute; left: 22px; bottom: 16px; transition: transform .08s ease; white-space: nowrap; }
+.cta .cta-arrow { position: absolute; right: 22px; top: 11px; width: 22px; height: 16px; shape-rendering: crispEdges; transition: transform .08s ease; }
 .cta:hover .cap, .cta:hover .cta-label, .cta:hover .cta-arrow { transform: translateY(2px); }
 .cta:active .cap, .cta:active .cta-label, .cta:active .cta-arrow { transform: translateY(4px); }
 .cta:focus-visible { outline: none; }
