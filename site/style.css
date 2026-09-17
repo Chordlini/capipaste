@@ -318,6 +318,6 @@ kbd.down { transform: translateY(2px); box-shadow: inset 0 0 0 1.5px var(--ink),
 }
 
 /* ---------- dithered section titles ---------- */
-.dither-title { position: relative; }
+.dither-title { position: relative; letter-spacing: 0.015em; }
 .dither-title.ready { color: transparent; }
 .dither-title canvas { position: absolute; left: 0; top: 0; pointer-events: none; }

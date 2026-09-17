@@ -180,7 +180,7 @@ function drawTitles() {
     const lineH = parseFloat(cs.lineHeight) || size * 1.02;
     const box = h.getBoundingClientRect();
     // one dot ≈ size/18 css px, snapped to whole device pixels
-    const cell = Math.max(2, Math.round(size / 16 * dpr));
+    const cell = Math.max(2, Math.round(size / 21 * dpr));
     // extra room below for descenders, which the text box clips
     const cssW = box.width, cssH = box.height + size * 0.25;
     let c = h.querySelector('canvas');
@@ -219,7 +219,7 @@ function drawTitles() {
         const baseline = (n * lineH + (lineH - size) / 2 + size * 0.8) * scale;
         o.fillText(line.text.trimEnd(), 0, baseline);
       });
-    }, { cell, color: INK, threshold: 0.6 });
+    }, { cell, color: INK, threshold: 0.5 });
     h.classList.add('ready');
   });
 }
