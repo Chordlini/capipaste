@@ -1,0 +1,868 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capipaste — Screenshot, say it, paste it</title>
+<meta name="description" content="Capipaste is a macOS menu-bar app: press ⌘⇧S, drag over the problem, say what should change, press Return. The marked-up screenshot and your note land on the clipboard for Claude Code, Codex or any chat. Speech-to-text runs on your Mac.">
+<meta property="og:title" content="Capipaste — Screenshot, say it, paste it">
+<meta property="og:description" content="⌘⇧S, drag, talk, ↩. Screenshot + voice note on your clipboard. Local speech-to-text on Apple Silicon.">
+<meta property="og:image" content="assets/social.png">
+<link rel="icon" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #F1F1EE;
+  --panel: #E3E3DF;
+  --panel-2: #D9D9D4;
+  --ink: #17171A;
+  --ink-2: #4A4A50;
+  --ink-3: #8A8A8F;
+  --rule: rgba(23, 23, 26, 0.12);
+  --mark: #FF3B5C;
+  --sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --pad: clamp(16px, 4vw, 64px);
+  --max: 1180px;
+  /* Bayer-ish dot texture used on panels */
+  --dots: radial-gradient(circle at 1px 1px, rgba(23,23,26,.10) 1px, transparent 1.2px) 0 0 / 6px 6px;
+}
+* { box-sizing: border-box; margin: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font: 17px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+a { color: inherit; }
+img { display: block; max-width: 100%; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
+.wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--pad); }
+
+/* ---------- nav ---------- */
+.nav {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid transparent;
+  transition: border-color .3s;
+}
+.nav.scrolled { border-bottom-color: var(--rule); }
+.nav .wrap { display: flex; align-items: center; gap: 32px; height: 76px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 24px; letter-spacing: -0.02em; text-decoration: none; }
+.brand img { width: 30px; height: 30px; }
+.nav ul { display: flex; gap: 34px; list-style: none; padding: 0; margin-left: auto; font-size: 15px; }
+.nav ul a { text-decoration: none; color: var(--ink-2); transition: color .2s; }
+.nav ul a:hover { color: var(--ink); }
+.btn {
+  display: inline-flex; align-items: center; gap: 12px;
+  background: var(--ink); color: var(--paper);
+  padding: 13px 24px; border-radius: 999px;
+  font-weight: 600; font-size: 16px; text-decoration: none;
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(23,23,26,.18); }
+.btn svg { width: 18px; height: 18px; }
+.btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.menu-toggle { display: none; }
+
+/* ---------- hero ---------- */
+.hero { position: relative; padding-bottom: clamp(60px, 10vw, 120px); }
+.hero-top { position: relative; height: calc(100svh - 76px); min-height: 480px; display: grid; place-items: center; }
+.stage { position: relative; width: min(520px, 80vw, 62svh); aspect-ratio: 1; margin: 0 auto; }
+.stage img { width: 100%; height: 100%; position: relative; z-index: 1; }
+.shadow {
+  position: absolute; left: 50%; bottom: -8%; width: 62%; height: 9%;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgba(23,23,26,.22), transparent);
+  filter: blur(6px);
+  animation: breathe 4s ease-in-out infinite;
+}
+.float { animation: float 4s ease-in-out infinite; }
+@keyframes float { 50% { transform: translateY(-14px); } }
+@keyframes breathe { 50% { transform: translateX(-50%) scale(.86); opacity: .75; } }
+/* e-ink refresh: panel flashes, then the dots settle */
+.refresh { position: absolute; inset: -6%; z-index: 2; pointer-events: none; }
+.hero-copy { text-align: center; }
+.hero h1 { font-size: clamp(40px, 6.4vw, 84px); line-height: 1; letter-spacing: -0.045em; font-weight: 700; }
+.hero p.lede { margin: 22px auto 0; max-width: 34em; color: var(--ink-2); font-size: clamp(17px, 1.6vw, 20px); }
+.hero .actions { margin-top: 34px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+kbd {
+  font: 600 .82em/1 var(--mono);
+  display: inline-grid; place-items: center; min-width: 1.9em; height: 1.9em; padding: 0 .45em;
+  border-radius: 6px; background: var(--paper); color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--ink), 0 2px 0 var(--ink);
+  vertical-align: .08em;
+}
+.scroll-cue { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); display: grid; gap: 5px; }
+.scroll-cue i { width: 5px; height: 5px; background: var(--ink); animation: cue 1.6s infinite; }
+.scroll-cue i:nth-child(2) { animation-delay: .2s; }
+.scroll-cue i:nth-child(3) { animation-delay: .4s; }
+@keyframes cue { 0%, 100% { opacity: .15; } 40% { opacity: 1; } }
+
+/* ---------- section scaffolding ---------- */
+section.block { padding: clamp(80px, 12vw, 160px) 0; }
+.eyebrow-row { display: flex; align-items: baseline; gap: 16px; margin-bottom: 20px; }
+.index { font: 600 13px var(--mono); color: var(--ink-3); }
+h2 { font-size: clamp(34px, 4.6vw, 60px); line-height: 1.02; letter-spacing: -0.04em; font-weight: 700; max-width: 14em; }
+.sub { margin-top: 18px; color: var(--ink-2); max-width: 36em; font-size: 19px; }
+/* headings print in through a dither mask */
+.print { --p: 0; -webkit-mask-image: var(--mask); mask-image: var(--mask); -webkit-mask-size: 8px 8px; mask-size: 8px 8px; }
+.printed { -webkit-mask-image: none; mask-image: none; }
+
+/* ---------- how it works (sticky) ---------- */
+.how { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 6vw, 96px); margin-top: 56px; }
+.steps { display: grid; gap: 0; }
+.step { min-height: 62vh; display: flex; flex-direction: column; justify-content: center; opacity: .28; transition: opacity .4s; }
+.step.on { opacity: 1; }
+.step .n { font: 600 13px var(--mono); color: var(--ink-3); margin-bottom: 12px; }
+.step h3 { font-size: clamp(26px, 2.6vw, 34px); letter-spacing: -0.03em; line-height: 1.1; }
+.step p { margin-top: 12px; color: var(--ink-2); max-width: 26em; }
+.demo-col { position: relative; }
+.demo {
+  position: sticky; top: calc(50vh - 230px);
+  height: 460px; border-radius: 22px; overflow: hidden;
+  background: var(--panel); background-image: var(--dots);
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+.screen {
+  position: absolute; inset: 34px 34px 150px; border-radius: 12px; overflow: hidden;
+  background: #fff; box-shadow: 0 18px 40px rgba(23,23,26,.14), inset 0 0 0 1px var(--rule);
+}
+.screen .bar { height: 30px; display: flex; gap: 6px; align-items: center; padding: 0 12px; border-bottom: 1px solid var(--rule); }
+.screen .bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--panel-2); }
+.fake { padding: 18px 20px; display: grid; gap: 12px; }
+.fake .row { display: flex; gap: 10px; align-items: center; }
+.fake .blk { height: 10px; border-radius: 3px; background: var(--panel-2); }
+.fake .btnish { height: 26px; width: 92px; border-radius: 7px; background: var(--ink); margin-left: auto; }
+.fake .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 6px; }
+.fake .cards div { height: 74px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--rule); }
+.sel {
+  position: absolute; border: 2px dashed var(--ink); background: rgba(23,23,26,.05);
+  left: 30%; top: 44%; width: 0; height: 0; transition: width .9s cubic-bezier(.2,.8,.2,1), height .9s cubic-bezier(.2,.8,.2,1);
+}
+.demo[data-step="1"] .sel, .demo[data-step="2"] .sel, .demo[data-step="3"] .sel { width: 46%; height: 34%; }
+.pen { position: absolute; inset: 0; pointer-events: none; }
+.pen path { fill: none; stroke: var(--mark); stroke-width: 3.5; stroke-linecap: round; stroke-dasharray: 400; stroke-dashoffset: 400; transition: stroke-dashoffset 1s .5s ease; }
+.demo[data-step="2"] .pen path, .demo[data-step="3"] .pen path { stroke-dashoffset: 0; }
+.strip {
+  position: absolute; left: 34px; right: 34px; bottom: 34px; height: 96px;
+  border-radius: 14px; background: rgba(255,255,255,.9); box-shadow: inset 0 0 0 1px var(--rule);
+  display: grid; grid-template-rows: 40px 1fr; padding: 10px 16px; gap: 6px;
+  transform: translateY(24px); opacity: 0; transition: .5s cubic-bezier(.2,.8,.2,1);
+}
+.demo[data-step="2"] .strip, .demo[data-step="3"] .strip { transform: none; opacity: 1; }
+.strip .top { display: flex; align-items: center; gap: 12px; font: 600 12px var(--mono); color: var(--ink-2); }
+.strip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mark); animation: cue 1s infinite; }
+.strip > * { min-width: 0; }
+.strip canvas { flex: 1; min-width: 0; width: 0; height: 36px; }
+.strip .said { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.caret { display: inline-block; width: 2px; height: 1em; background: var(--ink); vertical-align: -2px; animation: cue 1s steps(1) infinite; }
+.paste {
+  position: absolute; inset: 34px; border-radius: 14px; background: var(--ink); color: #E8E8E4;
+  padding: 22px 24px; font: 13.5px/1.7 var(--mono);
+  clip-path: inset(100% 0 0 0 round 14px); transition: clip-path .7s cubic-bezier(.2,.8,.2,1);
+}
+.demo[data-step="3"] .paste { clip-path: inset(0 0 0 0 round 14px); }
+.paste .prompt { color: #8A8A8F; }
+.paste .path { color: #9FE3D2; }
+.paste .ok { display: inline-block; margin-top: 18px; color: var(--ink); background: #E8E8E4; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+
+/* ---------- features ---------- */
+.features { margin-top: 64px; display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; }
+.feat {
+  position: relative; border-radius: 20px; padding: 28px; overflow: hidden;
+  background: var(--panel); box-shadow: inset 0 0 0 1px var(--rule);
+  display: flex; flex-direction: column; gap: 10px; min-height: 250px;
+  transition: transform .35s cubic-bezier(.2,.8,.2,1);
+}
+.feat:hover { transform: translateY(-4px); }
+.feat.big { grid-column: span 7; min-height: 340px; }
+.feat.mid { grid-column: span 5; }
+.feat.third { grid-column: span 4; }
+.feat.ink { background: var(--ink); color: var(--paper); }
+.feat.ink p { color: #B9B9B4; }
+.feat h3 { font-size: 22px; letter-spacing: -0.02em; line-height: 1.15; margin-top: auto; }
+.feat p { color: var(--ink-2); font-size: 16px; max-width: 30em; }
+.feat canvas.icon { width: 88px; height: 88px; image-rendering: pixelated; }
+.feat .models { display: grid; gap: 8px; margin-top: 6px; font: 13px var(--mono); }
+.feat .models div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 12px; border-radius: 8px; background: rgba(241,241,238,.08); box-shadow: inset 0 0 0 1px rgba(241,241,238,.14); }
+.feat .models b { font-weight: 600; color: var(--paper); }
+.feat .models span { color: #9A9A95; }
+.bars { display: flex; gap: 3px; align-items: center; height: 60px; }
+.bars i { width: 5px; background: var(--ink); height: 20%; animation: lvl 1.1s ease-in-out infinite; }
+@keyframes lvl { 50% { height: var(--h, 80%); } }
+
+/* ---------- use cases ---------- */
+.cases { margin-top: 56px; display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: clamp(24px, 4vw, 56px); align-items: start; }
+.tabs { display: grid; gap: 6px; position: sticky; top: 110px; }
+.tab {
+  all: unset; cursor: pointer; display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: center;
+  padding: 16px 18px; border-radius: 14px; transition: background .25s;
+}
+.tab:hover { background: var(--panel); }
+.tab[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.tab[aria-selected="true"] small { color: #B9B9B4; }
+.tab:focus-visible { outline: 2px solid var(--ink); }
+.tab canvas { width: 34px; height: 34px; image-rendering: pixelated; }
+.tab b { display: block; font-size: 17px; font-weight: 600; }
+.tab small { color: var(--ink-3); font-size: 14px; }
+.window {
+  border-radius: 18px; overflow: hidden; background: #111113; color: #E8E8E4;
+  box-shadow: 0 30px 60px rgba(23,23,26,.22); min-height: 460px; display: flex; flex-direction: column;
+}
+.window .chrome { display: flex; align-items: center; gap: 7px; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.window .chrome i { width: 11px; height: 11px; border-radius: 50%; background: #3A3A3E; }
+.window .chrome span { margin-left: 10px; font: 12px var(--mono); color: #8A8A8F; }
+.window .body { padding: 22px 24px; font: 14px/1.75 var(--mono); flex: 1; display: grid; align-content: start; gap: 14px; }
+.window .body .who { color: #8A8A8F; }
+.window .shot {
+  width: min(360px, 100%); aspect-ratio: 16/9; border-radius: 10px; overflow: hidden; position: relative;
+  background: #F4F4F1; box-shadow: inset 0 0 0 1px rgba(255,255,255,.1);
+}
+.window .shot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.window .reply { color: #B9B9B4; border-left: 2px solid #3A3A3E; padding-left: 14px; }
+.window .path { color: #9FE3D2; word-break: break-all; }
+.window.chat .body { font-family: var(--sans); font-size: 16px; line-height: 1.55; }
+.bubble { justify-self: end; max-width: 78%; background: #2A2A2E; padding: 12px 16px; border-radius: 16px 16px 4px 16px; display: grid; gap: 10px; }
+.bubble .shot { width: 100%; }
+
+/* ---------- specs ---------- */
+.specs { margin-top: 56px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 56px; }
+.spec { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 20px; padding: 18px 0; border-top: 1px solid var(--rule); }
+.spec dt { color: var(--ink-3); font-size: 15px; }
+.spec dd { font-size: 16px; overflow-wrap: anywhere; }
+.spec dd code, .faq code { font: 600 .88em var(--mono); background: var(--panel); padding: 1px 6px; border-radius: 5px; }
+.keys { display: grid; gap: 8px; }
+.keys div { display: flex; gap: 10px; align-items: center; }
+
+/* ---------- faq ---------- */
+.faq { margin-top: 48px; max-width: 860px; }
+.faq details { border-top: 1px solid var(--rule); }
+.faq details:last-child { border-bottom: 1px solid var(--rule); }
+.faq summary {
+  list-style: none; cursor: pointer; padding: 24px 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em;
+  display: flex; justify-content: space-between; gap: 24px; align-items: center;
+}
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary .plus { width: 14px; height: 14px; position: relative; flex: none; }
+.faq summary .plus::before, .faq summary .plus::after { content: ""; position: absolute; background: var(--ink); left: 0; top: 6px; width: 14px; height: 2px; transition: transform .3s; }
+.faq summary .plus::after { transform: rotate(90deg); }
+.faq details[open] .plus::after { transform: rotate(0); }
+.faq .ans { padding: 0 0 26px; color: var(--ink-2); max-width: 44em; }
+
+/* ---------- final cta ---------- */
+.final { padding: clamp(40px, 6vw, 80px) 0 60px; text-align: center; }
+.final .talker { width: 120px; height: 120px; margin: 0 auto 8px; }
+.final canvas { width: min(900px, 100%); height: auto; margin: 0 auto; image-rendering: pixelated; }
+.final p { margin-top: 26px; color: var(--ink-2); font-size: 19px; }
+.final .actions { margin-top: 30px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+footer { border-top: 1px solid var(--rule); padding: 28px 0 40px; color: var(--ink-3); font-size: 14px; }
+footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+  .nav ul { display: none; }
+  .nav .btn { margin-left: auto; padding: 11px 18px; font-size: 15px; }
+  .how { grid-template-columns: 1fr; }
+  .demo-col { order: -1; position: sticky; top: 76px; align-self: start; z-index: 2; background: var(--paper); padding: 10px 0 14px; }
+  .demo { position: relative; top: 0; height: 340px; }
+  .how { margin-top: 32px; gap: 8px; }
+  .screen { inset: 20px 20px 130px; }
+  .strip { left: 20px; right: 20px; bottom: 20px; }
+  .paste { inset: 20px; font-size: 12.5px; }
+  .step { min-height: 46vh; }
+  .features { grid-template-columns: 1fr; }
+  .feat.big, .feat.mid, .feat.third { grid-column: auto; min-height: 0; }
+  .cases { grid-template-columns: 1fr; }
+  .tabs { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tab { grid-template-columns: 28px 1fr; padding: 12px; }
+  .tab small { display: none; }
+  .specs { grid-template-columns: 1fr; }
+  .spec { grid-template-columns: 110px minmax(0, 1fr); gap: 14px; }
+}
+@media (max-width: 360px) { .brand span { display: none; } }
+@media (max-width: 520px) {
+  .brand { font-size: 20px; }
+  .fake .cards { grid-template-columns: repeat(2, 1fr); }
+  .fake .cards div:nth-child(3) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  html { scroll-behavior: auto; }
+  .print { -webkit-mask-image: none; mask-image: none; }
+}
+</style>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="assets/acorn-mark.png" alt=""><span>Capipaste</span></a>
+    <ul>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#cases">Use cases</a></li>
+      <li><a href="#specs">Specs</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+    <a class="btn" href="https://github.com/Chordlini/capipaste">Get Capipaste
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
+    </a>
+  </div>
+</nav>
+
+<main id="top">
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-top">
+      <div class="stage" id="stage">
+        <div class="float">
+          <img src="assets/acorn-spin.gif" alt="Capipaste's dotted acorn mascot, turning in place and talking" width="520" height="520">
+        </div>
+        <div class="shadow" aria-hidden="true"></div>
+        <canvas class="refresh" id="refresh" aria-hidden="true"></canvas>
+      </div>
+      <div class="scroll-cue" aria-hidden="true"><i></i><i></i><i></i></div>
+    </div>
+    <div>
+      <div class="hero-copy wrap">
+        <h1>Screenshot. Say it.<br>Paste it.</h1>
+        <p class="lede">Press <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>S</kbd>, drag over the problem and say what should change. Capipaste puts the marked-up screenshot and your words on the clipboard for Claude Code, Codex or any chat.</p>
+        <div class="actions">
+          <a class="btn" href="https://github.com/Chordlini/capipaste">Get Capipaste
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
+          </a>
+          <a class="btn ghost" href="#how">See how it works</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- HOW -->
+  <section class="block" id="how">
+    <div class="wrap">
+      <div class="eyebrow-row"><span class="index">01</span></div>
+      <h2 class="print">Three keys between you and a clear bug report.</h2>
+      <div class="how">
+        <div class="steps">
+          <div class="step" data-step="1">
+            <div class="n">Step 1 · <kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd></div>
+            <h3>Drag over what's wrong.</h3>
+            <p>The native macOS picker opens. Drag a region, or press Space to grab a whole window. Esc backs out.</p>
+          </div>
+          <div class="step" data-step="2">
+            <div class="n">Step 2 · talk</div>
+            <h3>Say what should change, circle where.</h3>
+            <p>A card opens with your screenshot and starts listening. Draw on it while you talk. Your words appear as text, transcribed on your Mac.</p>
+          </div>
+          <div class="step" data-step="3">
+            <div class="n">Step 3 · <kbd>↩</kbd></div>
+            <h3>Paste it where the work happens.</h3>
+            <p>Return stops recording, copies the image and your note, and puts you back in the app you came from. ⌘V.</p>
+          </div>
+        </div>
+        <div class="demo-col">
+          <div class="demo" id="demo" data-step="0" aria-hidden="true">
+            <div class="screen">
+              <div class="bar"><i></i><i></i><i></i></div>
+              <div class="fake">
+                <div class="row"><div class="blk" style="width:28%;background:var(--ink)"></div><div class="blk" style="width:12%"></div><div class="blk" style="width:12%"></div><div class="btnish"></div></div>
+                <div class="blk" style="width:52%;height:16px;background:#BDBDB8"></div>
+                <div class="blk" style="width:36%"></div>
+                <div class="cards"><div></div><div></div><div></div></div>
+                <div class="blk" style="width:70%"></div>
+                <div class="blk" style="width:58%"></div>
+              </div>
+              <div class="sel"></div>
+              <svg class="pen" viewBox="0 0 400 300" preserveAspectRatio="none"><path d="M135 150 C 150 118, 290 115, 300 150 C 308 178, 160 190, 132 160 C 124 150, 140 138, 160 136"/></svg>
+            </div>
+            <div class="strip">
+              <div class="top"><span class="dot"></span><span id="clock">0:04</span><canvas id="wave" width="600" height="72"></canvas><span>Nemotron</span></div>
+              <div class="said" id="said"></div>
+            </div>
+            <div class="paste">
+              <div class="prompt">❯ paste</div>
+              <div>The pricing cards wrap too early on tablet — keep three across down to 820px.</div>
+              <br>
+              <div class="path">[screenshot: ~/Pictures/Capipaste/Capipaste 2026-09-17 at 01.14.53.png]</div>
+              <span class="ok">Copied · image + note</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="block" id="features" style="padding-top:0">
+    <div class="wrap">
+      <div class="eyebrow-row"><span class="index">02</span></div>
+      <h2 class="print">Small app. Every edge filed down.</h2>
+      <p class="sub">Built for the loop you run fifty times a day: see it, say it, hand it off.</p>
+      <div class="features">
+        <article class="feat big ink">
+          <canvas class="icon" data-icon="chip" width="88" height="88"></canvas>
+          <h3>Speech stays on your Mac.</h3>
+          <p>Transcription runs on the Neural Engine. Pick a model from the menu bar; downloads happen once, and nothing you say leaves the machine.</p>
+          <div class="models">
+            <div><b>Nemotron 3.5 Streaming</b><span>live text as you talk</span></div>
+            <div><b>Parakeet 110M</b><span>fastest · English</span></div>
+            <div><b>Cohere Transcribe</b><span>most accurate</span></div>
+            <div><b>Apple Speech</b><span>built in · no download</span></div>
+          </div>
+        </article>
+        <article class="feat mid">
+          <canvas class="icon" data-icon="term" width="88" height="88"></canvas>
+          <h3>Knows where you're pasting.</h3>
+          <p>From a terminal, Capipaste copies your note with the image path, so Claude Code reads the screenshot instead of swallowing your words. Everywhere else you get the image and the text.</p>
+        </article>
+        <article class="feat third">
+          <canvas class="icon" data-icon="pen" width="88" height="88"></canvas>
+          <h3>Draw, erase, undo.</h3>
+          <p>Circle the problem. The eraser removes only what's under it. <kbd>⌘</kbd><kbd>Z</kbd> steps back one stroke at a time.</p>
+        </article>
+        <article class="feat third">
+          <canvas class="icon" data-icon="zoom" width="88" height="88"></canvas>
+          <h3>Pinch into the pixels.</h3>
+          <p>The card sizes itself to your capture. Pinch or <kbd>⌘</kbd><kbd>+</kbd> to zoom, two fingers to pan, and marks land exactly where you drew them.</p>
+        </article>
+        <article class="feat third">
+          <div class="bars" id="bars" aria-hidden="true"></div>
+          <h3>Asks again when it didn't catch that.</h3>
+          <p>If a transcript fails, it retries. If that fails too, the card stays open and asks you to say it once more.</p>
+        </article>
+        <article class="feat mid">
+          <canvas class="icon" data-icon="mic" width="88" height="88"></canvas>
+          <h3>Any microphone, from the menu bar.</h3>
+          <p>Switch between your built-in mic, a USB mic or AirPods without opening settings.</p>
+        </article>
+        <article class="feat big">
+          <canvas class="icon" data-icon="folder" width="88" height="88"></canvas>
+          <h3>Every capture is kept.</h3>
+          <p>Annotated PNGs are saved to <code style="font:600 .9em var(--mono)">~/Pictures/Capipaste</code>, and the note carries the path, so an agent can open the exact file later.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- USE CASES -->
+  <section class="block" id="cases" style="padding-top:0">
+    <div class="wrap">
+      <div class="eyebrow-row"><span class="index">03</span></div>
+      <h2 class="print">One capture, wherever the work is.</h2>
+      <div class="cases">
+        <div class="tabs" role="tablist" aria-label="Use cases">
+          <button class="tab" role="tab" aria-selected="true" data-case="claude"><canvas data-icon="term" width="88" height="88"></canvas><span><b>Fix a UI bug</b><small>Claude Code in the terminal</small></span></button>
+          <button class="tab" role="tab" aria-selected="false" data-case="codex"><canvas data-icon="pen" width="88" height="88"></canvas><span><b>Tweak a design</b><small>Codex app</small></span></button>
+          <button class="tab" role="tab" aria-selected="false" data-case="chat"><canvas data-icon="bubble" width="88" height="88"></canvas><span><b>Ask about an error</b><small>ChatGPT or Claude</small></span></button>
+          <button class="tab" role="tab" aria-selected="false" data-case="team"><canvas data-icon="folder" width="88" height="88"></canvas><span><b>Hand off QA notes</b><small>Slack, Linear, email</small></span></button>
+        </div>
+        <div id="case-view" role="tabpanel" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SPECS -->
+  <section class="block" id="specs" style="padding-top:0">
+    <div class="wrap">
+      <div class="eyebrow-row"><span class="index">04</span></div>
+      <h2 class="print">Specs.</h2>
+      <dl class="specs">
+        <div class="spec"><dt>System</dt><dd>macOS 26 on Apple Silicon</dd></div>
+        <div class="spec"><dt>Lives in</dt><dd>The menu bar. No Dock icon, no window until you capture.</dd></div>
+        <div class="spec"><dt>Capture</dt><dd>Native region and window picker</dd></div>
+        <div class="spec"><dt>Speech</dt><dd>On-device via FluidAudio (CoreML) or Apple Speech</dd></div>
+        <div class="spec"><dt>Clipboard</dt><dd>PNG + text, or text with <code>[screenshot: path]</code> for terminals</dd></div>
+        <div class="spec"><dt>Saved to</dt><dd><code>~/Pictures/Capipaste</code></dd></div>
+        <div class="spec"><dt>Permissions</dt><dd>Microphone, Screen Recording</dd></div>
+        <div class="spec"><dt>Network</dt><dd>Only to download a speech model you pick</dd></div>
+        <div class="spec"><dt>Shortcuts</dt><dd class="keys">
+          <div><kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd> capture</div>
+          <div><kbd>↩</kbd> copy · <kbd>⇧</kbd><kbd>↩</kbd> new line · <kbd>esc</kbd> cancel</div>
+          <div><kbd>D</kbd> draw · <kbd>E</kbd> erase · <kbd>⌘</kbd><kbd>Z</kbd> undo</div>
+          <div><kbd>⌘</kbd><kbd>+</kbd> <kbd>⌘</kbd><kbd>−</kbd> <kbd>⌘</kbd><kbd>0</kbd> zoom</div>
+        </dd></div>
+        <div class="spec"><dt>License</dt><dd>MIT, source on GitHub</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="block" id="faq" style="padding-top:0">
+    <div class="wrap">
+      <div class="eyebrow-row"><span class="index">05</span></div>
+      <h2 class="print">Questions.</h2>
+      <div class="faq">
+        <details open>
+          <summary>Does my voice leave my Mac?<span class="plus" aria-hidden="true"></span></summary>
+          <div class="ans">No. Every model runs locally. The only network traffic is the one-time download of a model you choose from the menu bar.</div>
+        </details>
+        <details>
+          <summary>Why does the terminal get a file path instead of the image?<span class="plus" aria-hidden="true"></span></summary>
+          <div class="ans">Claude Code attaches an image from the clipboard and drops any text next to it. So when you capture from a terminal, Capipaste copies your note with <code>[screenshot: /path.png]</code>, and the agent opens the file itself.</div>
+        </details>
+        <details>
+          <summary>Can I type instead of talk?<span class="plus" aria-hidden="true"></span></summary>
+          <div class="ans">Yes. Click the note and type. Listening stops the moment you type, so dictation never overwrites your edits.</div>
+        </details>
+        <details>
+          <summary>What if it mishears me?<span class="plus" aria-hidden="true"></span></summary>
+          <div class="ans">Edit the text before pressing Return. If a transcript fails outright, Capipaste retries once, then keeps the card open and asks you to say it again.</div>
+        </details>
+        <details>
+          <summary>Where do my screenshots go?<span class="plus" aria-hidden="true"></span></summary>
+          <div class="ans">Into <code>~/Pictures/Capipaste</code>, with your drawings flattened in at full resolution. Open the folder from the menu bar.</div>
+        </details>
+        <details>
+          <summary>Which speech model should I pick?<span class="plus" aria-hidden="true"></span></summary>
+          <div class="ans">Nemotron 3.5 Streaming if you want words to appear as you speak. Parakeet 110M if you want the smallest, fastest English model. Cohere Transcribe for the best accuracy on longer notes. Apple Speech works with no download at all.</div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL -->
+  <section class="final">
+    <div class="wrap">
+      <img class="talker" src="assets/acorn-talk.gif" alt="" width="120" height="120">
+      <canvas id="wordmark" width="900" height="200" role="img" aria-label="Capipaste"></canvas>
+      <p>Free, open source, and one shortcut away.</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/Chordlini/capipaste">Get Capipaste
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
+        </a>
+        <a class="btn ghost" href="https://github.com/Chordlini/capipaste#readme">Read the docs</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Capipaste · MIT</span>
+    <span>Speech by FluidAudio · made for people who talk to their agents</span>
+  </div>
+</footer>
+
+<script>
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const INK = '#17171A';
+const BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+
+/* ---------- dither helpers ---------- */
+// Draw with `paint(ctx, w, h)` in greyscale at low res, then Bayer-threshold into ink squares.
+function ditherInto(canvas, paint, { cell = 1, color = INK } = {}) {
+  const w = Math.floor(canvas.width / cell), h = Math.floor(canvas.height / cell);
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const o = off.getContext('2d');
+  o.fillStyle = '#fff'; o.fillRect(0, 0, w, h);
+  paint(o, w, h);
+  const px = o.getImageData(0, 0, w, h).data;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = color;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = px[(y * w + x) * 4] / 255;
+    if (v < (BAYER[y % 4][x % 4] + 0.5) / 16) ctx.fillRect(x * cell, y * cell, cell * 0.86, cell * 0.86);
+  }
+}
+
+// Pixel pictograms (22×22), shaded so the dither shows.
+const ICONS = {
+  chip(o) {
+    o.fillStyle = '#000'; o.fillRect(5, 5, 12, 12);
+    const g = o.createLinearGradient(6, 6, 16, 16); g.addColorStop(0, '#aaa'); g.addColorStop(1, '#555');
+    o.fillStyle = g; o.fillRect(7, 7, 8, 8);
+    o.fillStyle = '#000';
+    for (let i = 7; i <= 15; i += 4) { o.fillRect(i, 2, 1, 3); o.fillRect(i, 17, 1, 3); o.fillRect(2, i, 3, 1); o.fillRect(17, i, 3, 1); }
+  },
+  term(o) {
+    o.fillStyle = '#000'; o.fillRect(2, 3, 18, 16);
+    const g = o.createLinearGradient(0, 5, 0, 18); g.addColorStop(0, '#fff'); g.addColorStop(1, '#bbb');
+    o.fillStyle = g; o.fillRect(3, 6, 16, 12);
+    o.fillStyle = '#000'; o.fillRect(5, 8, 1, 1); o.fillRect(6, 9, 1, 1); o.fillRect(7, 10, 1, 1); o.fillRect(6, 11, 1, 1); o.fillRect(5, 12, 1, 1);
+    o.fillRect(9, 12, 5, 1);
+  },
+  pen(o) {
+    o.save(); o.translate(11, 11); o.rotate(-Math.PI / 4);
+    const g = o.createLinearGradient(-3, 0, 3, 0); g.addColorStop(0, '#000'); g.addColorStop(1, '#777');
+    o.fillStyle = g; o.fillRect(-3, -9, 6, 14);
+    o.fillStyle = '#000'; o.beginPath(); o.moveTo(-3, 5); o.lineTo(3, 5); o.lineTo(0, 10); o.fill();
+    o.restore();
+  },
+  zoom(o) {
+    o.strokeStyle = '#000'; o.lineWidth = 2.5; o.beginPath(); o.arc(9, 9, 6, 0, Math.PI * 2); o.stroke();
+    const g = o.createRadialGradient(7, 7, 1, 9, 9, 6); g.addColorStop(0, '#fff'); g.addColorStop(1, '#999');
+    o.fillStyle = g; o.beginPath(); o.arc(9, 9, 4.8, 0, Math.PI * 2); o.fill();
+    o.lineWidth = 3.5; o.beginPath(); o.moveTo(13.5, 13.5); o.lineTo(19, 19); o.stroke();
+  },
+  mic(o) {
+    const g = o.createLinearGradient(8, 0, 14, 0); g.addColorStop(0, '#000'); g.addColorStop(1, '#888');
+    o.fillStyle = g; o.beginPath(); o.roundRect(8, 2, 6, 11, 3); o.fill();
+    o.strokeStyle = '#000'; o.lineWidth = 1.6; o.beginPath(); o.arc(11, 9, 6, 0, Math.PI); o.stroke();
+    o.fillStyle = '#000'; o.fillRect(10, 15, 2, 4); o.fillRect(7, 19, 8, 1.6);
+  },
+  folder(o) {
+    o.fillStyle = '#000'; o.fillRect(2, 5, 8, 3); o.fillRect(2, 7, 18, 12);
+    const g = o.createLinearGradient(0, 8, 0, 18); g.addColorStop(0, '#ddd'); g.addColorStop(1, '#777');
+    o.fillStyle = g; o.fillRect(3, 9, 16, 9);
+  },
+  bubble(o) {
+    o.fillStyle = '#000'; o.beginPath(); o.roundRect(2, 3, 18, 13, 4); o.fill();
+    o.beginPath(); o.moveTo(6, 15); o.lineTo(5, 20); o.lineTo(11, 15); o.fill();
+    const g = o.createLinearGradient(0, 4, 0, 15); g.addColorStop(0, '#fff'); g.addColorStop(1, '#aaa');
+    o.fillStyle = g; o.beginPath(); o.roundRect(3.5, 4.5, 15, 10, 3); o.fill();
+  },
+};
+function paintIcons(root = document) {
+  root.querySelectorAll('canvas[data-icon]').forEach(c => {
+    const tab = c.closest('.tab');
+    const on = tab && tab.getAttribute('aria-selected') === 'true';
+    const inkFeat = c.closest('.feat.ink');
+    ditherInto(c, (o) => ICONS[c.dataset.icon](o), { cell: 4, color: on || inkFeat ? '#F1F1EE' : INK });
+  });
+}
+paintIcons();
+
+/* ---------- hero: e-ink refresh on load ---------- */
+(function refresh() {
+  const c = document.getElementById('refresh');
+  const size = () => { const r = c.getBoundingClientRect(); c.width = Math.round(r.width); c.height = Math.round(r.height); };
+  size();
+  if (reduced) return;
+  const ctx = c.getContext('2d');
+  const cell = 8;
+  const cols = Math.ceil(c.width / cell), rows = Math.ceil(c.height / cell);
+  const start = performance.now();
+  // 0–180ms solid ink flash, 180–360ms paper flash, then cells clear in Bayer order (like a panel settling)
+  function frame(t) {
+    const e = t - start;
+    ctx.clearRect(0, 0, c.width, c.height);
+    if (e < 180) { ctx.fillStyle = INK; roundFill(); }
+    else if (e < 360) { ctx.fillStyle = '#F1F1EE'; roundFill(); }
+    else {
+      const k = Math.min((e - 360) / 900, 1);
+      ctx.fillStyle = '#F1F1EE';
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        if ((BAYER[y % 4][x % 4] + 0.5) / 16 > k) ctx.fillRect(x * cell, y * cell, cell, cell);
+      }
+      if (k >= 1) { c.remove(); return; }
+    }
+    requestAnimationFrame(frame);
+  }
+  function roundFill() {
+    ctx.beginPath(); ctx.roundRect(c.width * .12, c.height * .12, c.width * .76, c.height * .76, 60); ctx.fill();
+  }
+  requestAnimationFrame(frame);
+})();
+
+/* ---------- hero parallax: acorn drifts up and shrinks as you scroll ---------- */
+const stage = document.getElementById('stage');
+const nav = document.getElementById('nav');
+addEventListener('scroll', () => {
+  const y = scrollY;
+  nav.classList.toggle('scrolled', y > 8);
+  if (reduced) return;
+  const k = Math.min(y / innerHeight, 1);
+  stage.style.transform = `translateY(${-k * 80}px) scale(${1 - k * 0.18})`;
+  stage.style.opacity = String(1 - k * 0.6);
+}, { passive: true });
+
+/* ---------- headings print in through a dither mask ---------- */
+// Pre-render 17 Bayer mask tiles (0..16 dots visible) as data URLs.
+const masks = Array.from({ length: 17 }, (_, level) => {
+  const c = document.createElement('canvas'); c.width = c.height = 8;
+  const o = c.getContext('2d'); o.fillStyle = '#000';
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) if (BAYER[y][x] < level) o.fillRect(x * 2, y * 2, 2, 2);
+  return `url(${c.toDataURL()})`;
+});
+const printIO = new IntersectionObserver(entries => {
+  for (const { target, isIntersecting } of entries) {
+    if (!isIntersecting) continue;
+    printIO.unobserve(target);
+    let level = 0;
+    const tick = () => {
+      level++;
+      if (level >= 16) { target.classList.add('printed'); return; }
+      target.style.setProperty('--mask', masks[level]);
+      setTimeout(tick, 45);
+    };
+    tick();
+  }
+}, { threshold: 0.4 });
+document.querySelectorAll('.print').forEach(el => {
+  if (reduced) return el.classList.add('printed');
+  el.style.setProperty('--mask', masks[0]);
+  printIO.observe(el);
+});
+
+/* ---------- how it works: sticky steps drive the demo ---------- */
+const demo = document.getElementById('demo');
+const steps = [...document.querySelectorAll('.step')];
+const stepIO = new IntersectionObserver(entries => {
+  for (const e of entries) if (e.isIntersecting) {
+    steps.forEach(s => s.classList.toggle('on', s === e.target));
+    setStep(Number(e.target.dataset.step));
+  }
+}, { rootMargin: '-45% 0px -45% 0px' });
+steps.forEach(s => stepIO.observe(s));
+
+const saidEl = document.getElementById('said');
+const clock = document.getElementById('clock');
+const sentence = 'The pricing cards wrap too early on tablet — keep three across down to 820px.';
+let typer, secs = 0, clockTimer;
+function setStep(n) {
+  demo.dataset.step = String(n);
+  clearInterval(typer); clearInterval(clockTimer);
+  if (n === 2) {
+    let i = 0; secs = 0;
+    saidEl.innerHTML = '<span class="caret"></span>';
+    typer = setInterval(() => {
+      i++;
+      saidEl.innerHTML = sentence.slice(0, i) + '<span class="caret"></span>';
+      if (i >= sentence.length) clearInterval(typer);
+    }, reduced ? 0 : 38);
+    clockTimer = setInterval(() => { secs++; clock.textContent = `0:${String(secs).padStart(2, '0')}`; }, 1000);
+  } else if (n === 3) {
+    saidEl.textContent = sentence;
+  }
+}
+
+// Live dot waveform in the demo strip (black dots, like the app)
+const wave = document.getElementById('wave');
+const wctx = wave.getContext('2d');
+const levels = Array(60).fill(0);
+let wt = 0;
+function drawWave() {
+  wt++;
+  const talking = demo.dataset.step === '2';
+  if (wt % 3 === 0) {
+    const v = talking ? Math.abs(Math.sin(wt * 0.21) * Math.sin(wt * 0.047)) * 0.9 + Math.random() * 0.25 : 0;
+    levels.shift(); levels.push(Math.min(v, 1));
+  }
+  wctx.clearRect(0, 0, wave.width, wave.height);
+  const colW = wave.width / levels.length;
+  levels.forEach((l, i) => {
+    const reach = Math.round(l * 4);
+    for (let r = -4; r <= 4; r++) {
+      wctx.fillStyle = Math.abs(r) <= reach && (talking || r === 0) ? INK : 'rgba(23,23,26,.1)';
+      wctx.beginPath();
+      wctx.arc(i * colW + colW / 2, 36 + r * 8, 2.6, 0, Math.PI * 2);
+      wctx.fill();
+    }
+  });
+  if (!reduced) requestAnimationFrame(drawWave);
+}
+drawWave();
+
+// Level bars in the "asks again" feature
+const bars = document.getElementById('bars');
+for (let i = 0; i < 28; i++) {
+  const b = document.createElement('i');
+  b.style.setProperty('--h', `${20 + Math.round(Math.abs(Math.sin(i * 1.7)) * 78)}%`);
+  b.style.animationDelay = `${(i % 7) * -0.13}s`;
+  bars.appendChild(b);
+}
+
+/* ---------- use cases ---------- */
+const shotSVG = (mark) => `<div class="shot"><svg viewBox="0 0 320 180" aria-hidden="true">
+  <rect width="320" height="180" fill="#F4F4F1"/><rect width="320" height="22" fill="#fff"/><rect x="12" y="8" width="60" height="6" rx="2" fill="#17171A"/>
+  <rect x="236" y="6" width="70" height="11" rx="5" fill="#17171A"/>
+  <rect x="16" y="36" width="140" height="10" rx="3" fill="#C9C9C4"/>
+  <rect x="16" y="60" width="90" height="70" rx="6" fill="#fff" stroke="#DADAD5"/><rect x="115" y="60" width="90" height="70" rx="6" fill="#fff" stroke="#DADAD5"/><rect x="214" y="60" width="90" height="70" rx="6" fill="#fff" stroke="#DADAD5"/>
+  <rect x="16" y="140" width="200" height="8" rx="3" fill="#DADAD5"/>
+  ${mark}</svg></div>`;
+const CASES = {
+  claude: { kind: 'term', title: '~/shop — claude',
+    lines: [
+      ['text', '❯ The Upgrade button overlaps the nav on small screens. Pin the header and give the button 16 pixels of breathing room.'],
+      ['path', '[screenshot: ~/Pictures/Capipaste/Capipaste 2026-09-17 at 09.41.12.png]'],
+      ['reply', '⏺ Read(Capipaste 2026-09-17 at 09.41.12.png)\n⏺ Update(src/components/Header.tsx) — sticky top-0, gap-4 on the actions'],
+    ],
+    mark: '<path d="M226 4 C 250 -2, 318 2, 312 14 C 306 28, 232 26, 228 14" fill="none" stroke="#FF3B5C" stroke-width="3" stroke-linecap="round"/>' },
+  codex: { kind: 'chat', title: 'Codex',
+    text: 'Make these three plan cards the same height and move the price above the feature list.',
+    reply: 'Updated PricingCard to a flex column with a fixed header row. Prices now sit above features; all three cards stretch to the tallest.',
+    mark: '<rect x="12" y="56" width="296" height="78" rx="8" fill="none" stroke="#FF3B5C" stroke-width="3" stroke-dasharray="7 5"/>' },
+  chat: { kind: 'chat', title: 'ChatGPT',
+    text: 'This build error shows up only on CI, not locally. What is it telling me?',
+    reply: 'The runner is on Node 18, and the error comes from a Node 20 API. Pin the Node version in your workflow file.',
+    mark: '<path d="M14 136 L 220 136 L 220 152 L 14 152 Z" fill="none" stroke="#FF3B5C" stroke-width="3"/>' },
+  team: { kind: 'chat', title: '#qa-web',
+    text: 'Checkout: the coupon field loses focus after the first character on Safari. Repro on staging, circled below.',
+    reply: 'Thanks, filed as WEB-1182 with your screenshot attached.',
+    mark: '<ellipse cx="160" cy="95" rx="56" ry="46" fill="none" stroke="#FF3B5C" stroke-width="3"/>' },
+};
+const view = document.getElementById('case-view');
+let caseTimer;
+function showCase(key) {
+  const c = CASES[key];
+  clearTimeout(caseTimer);
+  if (c.kind === 'term') {
+    view.innerHTML = `<div class="window"><div class="chrome"><i></i><i></i><i></i><span>${c.title}</span></div><div class="body" id="tbody"></div></div>`;
+    const body = view.querySelector('#tbody');
+    let i = 0;
+    const next = () => {
+      if (i >= c.lines.length) return;
+      const [cls, text] = c.lines[i++];
+      const el = document.createElement('div');
+      el.className = cls === 'text' ? '' : cls;
+      el.style.whiteSpace = 'pre-wrap';
+      body.appendChild(el);
+      if (cls === 'reply') {
+        el.insertAdjacentHTML('beforebegin', shotSVG(c.mark));
+      }
+      type(el, text, () => { caseTimer = setTimeout(next, reduced ? 0 : 260); });
+    };
+    next();
+  } else {
+    view.innerHTML = `<div class="window chat"><div class="chrome"><i></i><i></i><i></i><span>${c.title}</span></div><div class="body">
+      <div class="bubble">${shotSVG(c.mark)}<div id="btext"></div></div><div class="reply" id="breply" style="opacity:0;transition:opacity .4s"></div></div></div>`;
+    type(view.querySelector('#btext'), c.text, () => {
+      const r = view.querySelector('#breply');
+      r.textContent = c.reply;
+      caseTimer = setTimeout(() => (r.style.opacity = 1), reduced ? 0 : 350);
+    });
+  }
+}
+function type(el, text, done) {
+  if (reduced) { el.textContent = text; return done(); }
+  let i = 0;
+  const step = () => {
+    i = Math.min(i + 2, text.length);
+    el.textContent = text.slice(0, i);
+    if (i < text.length) caseTimer = setTimeout(step, 16); else done();
+  };
+  step();
+}
+const tabs = [...document.querySelectorAll('.tab')];
+tabs.forEach(t => t.addEventListener('click', () => {
+  tabs.forEach(o => o.setAttribute('aria-selected', String(o === t)));
+  paintIcons(document.querySelector('.tabs'));
+  showCase(t.dataset.case);
+}));
+// start typing the first case when the section scrolls into view
+new IntersectionObserver((entries, io) => {
+  if (entries[0].isIntersecting) { showCase('claude'); io.disconnect(); }
+}, { threshold: 0.3 }).observe(document.getElementById('cases'));
+view.innerHTML = '<div class="window"><div class="chrome"><i></i><i></i><i></i><span>~/shop — claude</span></div><div class="body"></div></div>';
+
+/* ---------- final dithered wordmark ---------- */
+const wm = document.getElementById('wordmark');
+const drawWordmark = () => ditherInto(wm, (o, w, h) => {
+  const g = o.createLinearGradient(0, h * 0.15, 0, h * 0.9);
+  g.addColorStop(0, '#000'); g.addColorStop(0.55, '#000'); g.addColorStop(1, '#8a8a8a');
+  o.fillStyle = g;
+  o.font = `700 ${Math.round(h * 0.78)}px "Hanken Grotesk", sans-serif`;
+  o.textAlign = 'center'; o.textBaseline = 'middle';
+  o.fillText('Capipaste', w / 2, h * 0.52);
+}, { cell: 5 });
+document.fonts.ready.then(drawWordmark);
+</script>
+</body>
+</html>
