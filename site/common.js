@@ -17,7 +17,7 @@ function ditherInto(canvas, paint, { cell = 1, color = INK, threshold = null } =
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = color;
   // whole-pixel dots with a 1-pixel-or-so gap, so edges never blur
-  const dot = cell <= 1 ? 1 : cell - Math.max(1, Math.round(cell * 0.14));
+  const dot = cell <= 2 ? cell : cell - Math.max(1, Math.round(cell * 0.14));
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const v = px[(y * w + x) * 4] / 255;
     const cut = threshold ?? (BAYER[y % 4][x % 4] + 0.5) / 16;
@@ -180,7 +180,7 @@ function drawTitles() {
     const lineH = parseFloat(cs.lineHeight) || size * 1.02;
     const box = h.getBoundingClientRect();
     // one dot ≈ size/18 css px, snapped to whole device pixels
-    const cell = Math.max(2, Math.round(size / 21 * dpr));
+    const cell = Math.max(2, Math.round(size / parseFloat(h.dataset.grid || 21) * dpr));
     // extra room below for descenders, which the text box clips
     const cssW = box.width, cssH = box.height + size * 0.25;
     let c = h.querySelector('canvas');
@@ -226,3 +226,28 @@ function drawTitles() {
 document.fonts.ready.then(drawTitles);
 let titleWidth = innerWidth;
 addEventListener("resize", () => { if (innerWidth !== titleWidth) { titleWidth = innerWidth; drawTitles(); } });
+
+/* ---------- nav: number keys jump to sections; highlight the one you're in ---------- */
+(function keyNav() {
+  const links = [...document.querySelectorAll('.nav ul a[data-key]')];
+  addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+    const link = links.find(l => l.dataset.key === e.key);
+    if (!link) return;
+    link.classList.add('pressed');
+    setTimeout(() => link.classList.remove('pressed'), 160);
+    link.click();
+  });
+  const targets = links
+    .map(l => [l, l.hash && location.pathname.split('/').pop() !== 'faq.html' ? document.querySelector(l.hash) : null])
+    .filter(([, t]) => t);
+  if (!targets.length) return;
+  const spy = new IntersectionObserver(entries => {
+    for (const e of entries) {
+      const link = targets.find(([, t]) => t === e.target)?.[0];
+      if (link && e.isIntersecting) targets.forEach(([l]) => l.classList.toggle('active', l === link));
+    }
+  }, { rootMargin: '-40% 0px -55% 0px' });
+  targets.forEach(([, t]) => spy.observe(t));
+})();
