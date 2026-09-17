@@ -132,8 +132,10 @@ func drawAcorn(_ c: CGContext, eyes: CGFloat = 1, mouth: CGFloat = 0, turn: CGFl
     let radius: CGFloat = 235
     func place(_ x: CGFloat, _ draw: () -> Void) {
         let angle = asin(max(-1, min(1, (x - 500) / radius))) + turn
-        guard cos(angle) > 0.12 else { return } // round the back: hidden
+        guard cos(angle) > 0.25 else { return } // round the back: hidden
         c.saveGState()
+        c.addPath(nut)
+        c.clip() // never draw past the silhouette
         c.translateBy(x: 500 + radius * sin(angle), y: 0)
         c.scaleBy(x: cos(angle), y: 1) // foreshortened near the edge
         draw()
@@ -177,6 +179,11 @@ func drawAcorn(_ c: CGContext, eyes: CGFloat = 1, mouth: CGFloat = 0, turn: CGFl
             c.fillEllipse(in: CGRect(x: -w / 2, y: 700, width: w, height: h))
         }
     }
+    // re-ink the rim over anything that reached the edge
+    c.addPath(nut)
+    c.setStrokeColor(gray: 0, alpha: 1)
+    c.setLineWidth(20)
+    c.strokePath()
 
     clipped(c, cap) {
         c.drawLinearGradient(grad([0.38, 0.04]), start: pt(320, 300), end: pt(700, 520), options: [])
