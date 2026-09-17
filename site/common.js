@@ -190,24 +190,29 @@ function drawTitles() {
     c.style.width = `${c.width / dpr}px`;
     c.style.height = `${c.height / dpr}px`;
 
-    // lay the text out exactly as the browser wrapped it: one rect per rendered line
+    // lay the text out exactly as the browser wrapped it, keeping each line's x offset
+    // so centred headlines stay centred
     const range = document.createRange();
     const textNode = [...h.childNodes].find(n => n.nodeType === 3);
     if (!textNode) return;
     const text = textNode.textContent;
-    const lines = [];
-    let start = 0, lastTop = null;
+    const breaks = [0];
+    let lastTop = null;
     for (let i = 0; i < text.length; i++) {
       range.setStart(textNode, i); range.setEnd(textNode, i + 1);
       const r = range.getClientRects()[0];
       if (!r) continue;
-      if (lastTop !== null && Math.abs(r.top - lastTop) > size * 0.5) {
-        lines.push({ text: text.slice(start, i) });
-        start = i;
-      }
+      if (lastTop !== null && Math.abs(r.top - lastTop) > size * 0.5) breaks.push(i);
       lastTop = r.top;
     }
-    lines.push({ text: text.slice(start) });
+    breaks.push(text.length);
+    const lines = [];
+    for (let n = 0; n < breaks.length - 1; n++) {
+      const from = breaks[n], to = breaks[n + 1];
+      range.setStart(textNode, from); range.setEnd(textNode, to);
+      const r = range.getBoundingClientRect();
+      lines.push({ text: text.slice(from, to).trim(), left: r.left - box.left });
+    }
 
     ditherInto(c, (o, w, hgt) => {
       const scale = dpr / cell; // css px → low-res dots
@@ -217,7 +222,7 @@ function drawTitles() {
       o.textBaseline = 'alphabetic';
       lines.forEach((line, n) => {
         const baseline = (n * lineH + (lineH - size) / 2 + size * 0.8) * scale;
-        o.fillText(line.text.trimEnd(), 0, baseline);
+        o.fillText(line.text, line.left * scale, baseline);
       });
     }, { cell, color: INK, threshold: 0.5 });
     h.classList.add('ready');
