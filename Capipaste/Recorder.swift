@@ -57,7 +57,7 @@ struct AudioInput: Identifiable, Hashable {
 }
 
 /// Taps the chosen microphone and hands out 16 kHz mono samples plus a 0...1 level.
-final class Recorder {
+final class Recorder: @unchecked Sendable {
     private var engine: AVAudioEngine?
 
     func start(device: AudioInput?, onAudio: @escaping @Sendable ([Float], Float) -> Void) throws {

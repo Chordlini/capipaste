@@ -135,6 +135,8 @@ final class CardModel {
     /// Copy only the note (with the image path), for terminals.
     var textOnly = false
     private var peakLevel: Float = 0
+    /// True while the audio device is being opened on a background thread.
+    private var startingMic = false
 
     var tool: Tool = .draw
     var strokes: [Stroke] = []
@@ -243,16 +245,46 @@ final class CardModel {
         levelCount = 0
         peakLevel = 0
         stt.begin()
-        do {
-            try recorder.start(device: mic) { [weak self] samples, level in
-                Task { @MainActor in self?.receive(samples, level) }
+        startedAt = .now
+        stoppedAfter = nil
+        startingMic = true
+        // AVAudioEngine talks to CoreAudio, which can block for a long time on a
+        // misbehaving device (aggregates, Continuity mics). Never do that on the main
+        // thread: the card would freeze with it.
+        let recorder = self.recorder
+        trace("card: opening mic \(mic.name)")
+        Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                try recorder.start(device: mic) { samples, level in
+                    Task { @MainActor in self?.receive(samples, level) }
+                }
+                trace("card: mic engine started")
+                await MainActor.run {
+                    guard let self, self.startingMic else { return recorder.stop() }
+                    self.startingMic = false
+                    self.recording = true
+                    self.startedAt = .now
+                }
+            } catch {
+                trace("card: mic start threw \(error)")
+                await MainActor.run {
+                    guard let self else { return }
+                    self.startingMic = false
+                    self.stt.cancel()
+                    self.failure = "Couldn't open \(mic.name)."
+                }
             }
-            recording = true
-            startedAt = .now
-            stoppedAfter = nil
-        } catch {
-            stt.cancel()
-            failure = "Couldn't open \(mic.name)."
+        }
+        // If the device never answers, say so instead of leaving a dead card.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard let self else { return }
+            trace("card: mic watchdog starting=\(self.startingMic) recording=\(self.recording)")
+            guard self.startingMic, !self.recording else { return }
+            self.startingMic = false
+            self.stt.cancel()
+            self.failure = "\(mic.name) isn't responding. Type your note, or pick another microphone."
+            trace("card: mic start timed out on \(mic.name)")
         }
     }
 
@@ -283,6 +315,7 @@ final class CardModel {
     }
 
     private func stopRecording() {
+        startingMic = false
         guard recording else { return }
         recorder.stop()
         recording = false
