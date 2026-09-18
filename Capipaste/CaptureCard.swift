@@ -5,12 +5,15 @@ import SwiftUI
 @MainActor
 final class CaptureCard {
     private let panel: KeyPanel
+    private let model: CardModel
+    private var hosting: NSView?
     private var scrollMonitor: Any?
 
     init(image: NSImage, mic: AudioInput?, stt: STT, textOnly: Bool = false, onClose: @escaping () -> Void) {
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
         let model = CardModel(image: image, mic: mic, stt: stt, screen: screen?.visibleFrame.size ?? CGSize(width: 1440, height: 900))
         model.textOnly = textOnly
+        self.model = model
         panel = KeyPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
                          backing: .buffered, defer: false)
         panel.isFloatingPanel = true
@@ -25,6 +28,7 @@ final class CaptureCard {
         let hosting = NSHostingView(rootView: CardView(model: model).padding(40))
         panel.contentView = hosting
         panel.setContentSize(hosting.fittingSize)
+        self.hosting = hosting
 
         if let visible = screen?.visibleFrame {
             panel.setFrameOrigin(NSPoint(x: visible.midX - panel.frame.width / 2,
@@ -38,6 +42,10 @@ final class CaptureCard {
             return nil
         }
 
+        model.relayout = { [weak self] in
+            // Let SwiftUI lay out the new size first, then grow/shrink around the same centre.
+            DispatchQueue.main.async { self?.fit() }
+        }
         model.close = { [panel, weak self] in
             if let monitor = self?.scrollMonitor { NSEvent.removeMonitor(monitor) }
             panel.orderOut(nil)
@@ -70,6 +78,18 @@ final class CaptureCard {
         guard CommandLine.arguments.contains("-autosubmit") else { return }
         Task {
             try? await Task.sleep(for: .seconds(9))
+            // `-addshot <png>`: a second capture joins the note (and gets the test marks)
+            let extra = CommandLine.arguments.firstIndex(of: "-addshot").map { CommandLine.arguments[$0 + 1] }
+            if let extra, let image = NSImage(contentsOfFile: extra) {
+                self.add(image)
+                trace("card: shots=\(model.shots.count) showing=\(model.index)")
+                try? await Task.sleep(for: .seconds(1))
+                if let hosting, let i = CommandLine.arguments.firstIndex(of: "-snapshot"),
+                   let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) {
+                    hosting.cacheDisplay(in: hosting.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1] + "-2.png"))
+                }
+            }
             for x in stride(from: 40.0, through: 200, by: 8) { model.drag(to: CGPoint(x: x, y: 60 + x / 4)) }
             model.endDrag()
             // Erase the middle: expect the line to split in two, and undo to restore it.
@@ -118,6 +138,21 @@ final class CaptureCard {
         NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
     }
+
+    /// Out of the way while you pick the next region; the mic keeps recording.
+    func hide() { panel.orderOut(nil) }
+
+    func add(_ image: NSImage) {
+        model.add(image)
+        focus()
+    }
+
+    private func fit() {
+        guard let size = hosting?.fittingSize else { return }
+        let old = panel.frame
+        panel.setFrame(NSRect(x: old.midX - size.width / 2, y: old.midY - size.height / 2,
+                              width: size.width, height: size.height), display: true)
+    }
 }
 
 final class KeyPanel: NSPanel {
@@ -137,14 +172,36 @@ enum Tool {
     }
 }
 
+/// One screenshot in the card, with its own marks.
+struct Shot {
+    let image: NSImage
+    var strokes: [Stroke] = []
+    var history: [[Stroke]] = []
+    /// Text read off the capture, started when it's added.
+    let ocr: Task<String, Never>
+}
+
 @MainActor @Observable
 final class CardModel {
-    let image: NSImage
-    let shotSize: CGSize
     let stt: STT
     private let mic: AudioInput?
     private let recorder = Recorder()
+    private let screen: CGSize
     var close: () -> Void = {}
+    /// The card's size changes (a shot added, removed or switched).
+    var relayout: () -> Void = {}
+
+    private(set) var shots: [Shot] = []
+    private(set) var index = 0
+    var image: NSImage { shots[index].image }
+    var strokes: [Stroke] {
+        get { shots[index].strokes }
+        set { shots[index].strokes = newValue }
+    }
+    private var history: [[Stroke]] {
+        get { shots[index].history }
+        set { shots[index].history = newValue }
+    }
 
     var text = ""
     private var liveEcho = ""
@@ -169,34 +226,63 @@ final class CardModel {
     private var startingMic = false
 
     var tool: Tool = .draw
-    var strokes: [Stroke] = []
     var current: Stroke?
-    private var history: [[Stroke]] = []
-    /// The capture as a mosaic, shown through blur boxes.
-    @ObservationIgnored lazy var mosaic: NSImage? = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
-        .flatMap(Output.pixelated).map { NSImage(cgImage: $0, size: image.size) }
-    /// Text read off the capture, started as soon as the card opens.
-    private var ocr: Task<String, Never>?
+    /// Each capture as a mosaic, shown through blur boxes (made on first use).
+    @ObservationIgnored private var mosaics: [ObjectIdentifier: NSImage] = [:]
+    var mosaic: NSImage? {
+        let key = ObjectIdentifier(image)
+        if let cached = mosaics[key] { return cached }
+        let made = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            .flatMap(Output.pixelated).map { NSImage(cgImage: $0, size: image.size) }
+        mosaics[key] = made
+        return made
+    }
 
     init(image: NSImage, mic: AudioInput?, stt: STT, screen: CGSize) {
-        self.image = image
-        let read = Task { await OCR.text(in: image) }
-        ocr = read
-        // Names on screen are what you're likely to say: teach them to the speech model for this take.
-        Task { [stt] in stt.sessionWords = Vocabulary.identifiers(in: await read.value) }
         self.mic = mic
         self.stt = stt
-        // Fill up to 80% of the screen (minus the strip, note and footer), never upscaled past 1:1.
-        let size = image.size
-        let scale = min(screen.width * 0.8 / size.width, (screen.height * 0.8 - 190) / size.height, 1)
-        shotSize = CGSize(width: size.width * scale, height: size.height * scale)
-        fitScale = scale
+        self.screen = screen
+        add(image)
     }
+
+    /// Another capture for the same note; recording keeps going.
+    func add(_ image: NSImage) {
+        let read = Task { await OCR.text(in: image) }
+        shots.append(Shot(image: image, ocr: read))
+        // Names on screen are what you're likely to say: teach them to the speech model for this take.
+        Task { [stt, shots] in
+            var words: [String] = []
+            for shot in shots { words += Vocabulary.identifiers(in: await shot.ocr.value) }
+            stt.sessionWords = words
+        }
+        select(shots.count - 1)
+    }
+
+    func select(_ i: Int) {
+        guard shots.indices.contains(i), current == nil else { return }
+        index = i
+        resetZoom()
+        relayout()
+    }
+
+    func remove(_ i: Int) {
+        guard shots.count > 1, shots.indices.contains(i) else { return }
+        shots.remove(at: i)
+        index = min(index, shots.count - 1)
+        resetZoom()
+        relayout()
+    }
+
+    /// Fill up to 80% of the screen (minus the strip, thumbnails, note and footer), never upscaled past 1:1.
+    var fitScale: CGFloat { fitScale(for: image) }
+    func fitScale(for image: NSImage) -> CGFloat {
+        let size = image.size
+        return min(screen.width * 0.8 / size.width, (screen.height * 0.8 - 190 - (shots.count > 1 ? 70 : 0)) / size.height, 1)
+    }
+    var shotSize: CGSize { CGSize(width: image.size.width * fitScale, height: image.size.height * fitScale) }
 
     // MARK: Zoom
 
-    /// Screen points per image point at zoom 1.
-    let fitScale: CGFloat
     static let maxZoom: CGFloat = 6
     var zoom: CGFloat = 1
     /// Offset of the zoomed image inside the frame (always ≤ 0).
@@ -384,22 +470,28 @@ final class CardModel {
                 if !userEdited {
                     finishing = true
                     tidying = true
-                    let screen = await ocr?.value ?? ""
+                    var screen = ""
+                    for shot in shots { screen += await shot.ocr.value + "\n" }
                     if let tidy = await AppModel.shared.tidy.rewrite(text, screen: screen) { text = tidy }
                     tidying = false
                     finishing = false
                 }
             }
-            guard let png = Output.render(image, strokes: strokes, lineWidth: Stroke.width / fitScale) else {
-                failure = "Couldn't render the screenshot."
-                return
+            var pngs: [Data] = []
+            for shot in shots {
+                guard let png = Output.render(shot.image, strokes: shot.strokes, lineWidth: Stroke.width / fitScale(for: shot.image)) else {
+                    failure = "Couldn't render the screenshot."
+                    return
+                }
+                pngs.append(png)
             }
             do {
                 let mode = OCR.Mode.current
                 let wantsOCR = mode == .always || (mode == .terminals && textOnly)
-                let screenText = wantsOCR ? await ocr?.value ?? "" : ""
-                let saved = try Output.deliver(png: png, note: text, screenText: screenText, textOnly: textOnly)
-                trace("card: delivered \(saved.path), text only=\(textOnly)")
+                var screenTexts: [String] = []
+                for shot in shots { screenTexts.append(wantsOCR ? await shot.ocr.value : "") }
+                let saved = try Output.deliver(pngs: pngs, note: text, screenTexts: screenTexts, textOnly: textOnly)
+                trace("card: delivered \(saved.map(\.lastPathComponent)), text only=\(textOnly)")
             } catch {
                 failure = "Couldn't save: \(error.localizedDescription)"
                 return

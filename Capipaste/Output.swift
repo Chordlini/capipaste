@@ -112,30 +112,42 @@ enum Output {
         return CIContext().createCGImage(mosaic, from: image.extent)
     }
 
-    /// Saves the PNG and puts image + note on the clipboard. Returns the saved file.
+    /// Saves the PNGs and puts image(s) + note on the clipboard. Returns the saved files.
     @discardableResult
-    static func deliver(png: Data, note: String, screenText: String = "", textOnly: Bool = false) throws -> URL {
+    static func deliver(pngs: [Data], note: String, screenTexts: [String] = [], textOnly: Bool = false) throws -> [URL] {
         let folder = AppModel.capturesFolder
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let stamp = Date().formatted(.verbatim("\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) at \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)).\(minute: .twoDigits).\(second: .twoDigits)", timeZone: .current, calendar: .current))
-        let url = folder.appendingPathComponent("Capipaste \(stamp).png")
-        try png.write(to: url)
+        let many = pngs.count > 1
+        var urls: [URL] = []
+        for (i, png) in pngs.enumerated() {
+            let url = folder.appendingPathComponent("Capipaste \(stamp)\(many ? " (\(i + 1))" : "").png")
+            try png.write(to: url)
+            urls.append(url)
+        }
 
-        // Text-only targets (terminals) still reach the image through the path.
+        // Text-only targets (terminals) still reach the images through the paths.
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
         var text = trimmed.isEmpty ? "" : trimmed + "\n\n"
-        if !screenText.isEmpty { text += "Text in the screenshot:\n```text\n\(screenText)\n```\n\n" }
-        text += "[screenshot: \(url.path)]"
-
-        let item = NSPasteboardItem()
-        if !textOnly {
-            item.setData(png, forType: .png)
-            if let tiff = NSImage(data: png)?.tiffRepresentation { item.setData(tiff, forType: .tiff) }
+        for (i, screen) in screenTexts.enumerated() where !screen.isEmpty {
+            text += "Text in the screenshot\(many ? " \(i + 1)" : ""):\n```text\n\(screen)\n```\n\n"
         }
-        item.setString(text, forType: .string)
+        text += urls.enumerated().map { "[screenshot\(many ? " \($0.offset + 1)" : ""): \($0.element.path)]" }.joined(separator: "\n")
+
+        // One pasteboard item per image; the note rides on the first.
+        let items = pngs.enumerated().map { i, png in
+            let item = NSPasteboardItem()
+            if !textOnly {
+                if many { item.setString(urls[i].absoluteString, forType: .fileURL) }
+                item.setData(png, forType: .png)
+                if let tiff = NSImage(data: png)?.tiffRepresentation { item.setData(tiff, forType: .tiff) }
+            }
+            return item
+        }
+        items[0].setString(text, forType: .string)
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects([item])
-        return url
+        NSPasteboard.general.writeObjects(textOnly ? [items[0]] : items)
+        return urls
     }
 }
 

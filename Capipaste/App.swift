@@ -88,7 +88,20 @@ final class AppModel {
     func capture() {
         let source = NSWorkspace.shared.frontmostApplication
         trace("capture: hotkey, card open=\(card != nil), screen access=\(CGPreflightScreenCaptureAccess())")
-        guard card == nil else { card?.focus(); return }
+        if let card {
+            // Another region for the same note.
+            card.hide()
+            Task {
+                let url = await Capture.region()
+                if let url, let image = NSImage(contentsOf: url) {
+                    try? FileManager.default.removeItem(at: url)
+                    card.add(image)
+                } else {
+                    card.focus()
+                }
+            }
+            return
+        }
         if !CGPreflightScreenCaptureAccess() {
             // macOS shows its own prompt; the capture works once access is granted.
             CGRequestScreenCaptureAccess()

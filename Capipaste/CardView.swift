@@ -1,3 +1,4 @@
+import KeyboardShortcuts
 import SwiftUI
 
 extension Color {
@@ -19,6 +20,7 @@ struct CardView: View {
     var body: some View {
         VStack(spacing: 0) {
             shot
+            if model.shots.count > 1 { thumbnails.padding(.top, 10) }
             waveBox.padding(.top, 10)
             transcript
             footer
@@ -126,6 +128,39 @@ struct CardView: View {
                 }
             }
             .frame(maxWidth: .infinity)
+    }
+
+    /// Every capture in this note; click to switch, × to drop one.
+    private var thumbnails: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(model.shots.enumerated()), id: \.offset) { i, shot in
+                    Button { model.select(i) } label: {
+                        Image(nsImage: shot.image)
+                            .resizable().scaledToFill()
+                            .frame(width: 84, height: 52)
+                            .clipShape(.rect(cornerRadius: 6))
+                            .overlay(RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(i == model.index ? Color.ink : .white.opacity(0.25), lineWidth: i == model.index ? 2 : 1))
+                            .overlay(alignment: .bottomLeading) {
+                                Text("\(i + 1)").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                                    .padding(.horizontal, 5).background(.black.opacity(0.6), in: .capsule).padding(4)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .overlay(alignment: .topTrailing) {
+                        Button { model.remove(i) } label: {
+                            Image(systemName: "xmark.circle.fill").font(.system(size: 14))
+                                .symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.7))
+                        }
+                        .buttonStyle(.plain).offset(x: 5, y: -5)
+                        .help("Remove this screenshot")
+                    }
+                }
+            }
+            .padding(.top, 5).padding(.trailing, 5)
+        }
+        .frame(height: 62)
     }
 
     private var tools: some View {
@@ -242,6 +277,7 @@ struct CardView: View {
                 Text(failure).foregroundStyle(Color.ink).lineLimit(1)
             }
             Spacer()
+            hint(KeyboardShortcuts.getShortcut(for: .capture)?.description ?? "⌘⇧S", "Add shot")
             hint("↩", "Copy")
             hint("⇧↩", "New line")
             hint("esc", "Cancel")
