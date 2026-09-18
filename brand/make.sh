@@ -20,7 +20,7 @@ for n in 16 32 64 128 256 512 1024; do
 done
 
 # website copies (the site lives in its own repo; override with SITE_DIR)
-SITE_DIR="${SITE_DIR:-../capipaste-site}"
+SITE_DIR="${SITE_DIR:-../../capipaste-site}"
 if [ -d "$SITE_DIR/assets" ]; then
   cp $A/acorn-spin.gif $A/acorn-talk.gif $A/acorn-mark.png $A/social.png "$SITE_DIR/assets/"
   sips -z 64 64 $A/acorn-mark.png --out "$SITE_DIR/assets/favicon.png" >/dev/null
