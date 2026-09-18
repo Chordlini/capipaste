@@ -106,7 +106,7 @@ kbd {
 }
 /* the full stop is the recording light */
 .rec-dot {
-  width: .2em; height: .2em; margin-bottom: .05em; flex: none;
+  width: .2em; height: .2em; margin-bottom: .2em; flex: none;
   background: var(--mark);
   animation: rec 1.6s ease-in-out infinite;
 }
