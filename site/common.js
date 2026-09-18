@@ -3,6 +3,26 @@ const INK = '#17171A';
 const BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
 
 /* ---------- dither helpers ---------- */
+/// Collects the dots a paint call would produce: canvas-pixel positions with a random rank,
+/// so a title can be drawn dot by dot in a scattered order.
+function ditherCollect(canvas, paint, { cell = 1, threshold = null } = {}) {
+  const w = Math.max(1, Math.floor(canvas.width / cell)), h = Math.max(1, Math.floor(canvas.height / cell));
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const o = off.getContext('2d', { willReadFrequently: true });
+  o.fillStyle = '#fff'; o.fillRect(0, 0, w, h);
+  paint(o, w, h);
+  const px = o.getImageData(0, 0, w, h).data;
+  const dot = cell <= 2 ? cell : cell - Math.max(1, Math.round(cell * 0.14));
+  const dots = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const v = px[(y * w + x) * 4] / 255;
+    const cut = threshold ?? (BAYER[y % 4][x % 4] + 0.5) / 16;
+    if (v < cut) dots.push({ x: x * cell, y: y * cell, rank: Math.random() });
+  }
+  return { dots, dot };
+}
+
 // Draw with `paint(ctx, w, h)` in greyscale at low res, then Bayer-threshold into ink squares.
 // `threshold`: a number cuts hard at that grey level (clean bitmap) instead of Bayer dithering.
 function ditherInto(canvas, paint, { cell = 1, color = INK, threshold = null } = {}) {
@@ -91,14 +111,18 @@ document.querySelectorAll('.print').forEach(el => {
 
 /* ---------- final dithered wordmark ---------- */
 const wm = document.getElementById('wordmark');
-const drawWordmark = () => wm && ditherInto(wm, (o, w, h) => {
-  const g = o.createLinearGradient(0, h * 0.15, 0, h * 0.9);
-  g.addColorStop(0, '#000'); g.addColorStop(0.55, '#000'); g.addColorStop(1, '#8a8a8a');
-  o.fillStyle = g;
-  o.font = `700 ${Math.round(h * 0.78)}px "Hanken Grotesk", sans-serif`;
-  o.textAlign = 'center'; o.textBaseline = 'middle';
-  o.fillText('Capipaste', w / 2, h * 0.52);
-}, { cell: 5 });
+const drawWordmark = () => {
+  if (!wm) return;
+  wm.titleDots = ditherCollect(wm, (o, w, h) => {
+    const g = o.createLinearGradient(0, h * 0.15, 0, h * 0.9);
+    g.addColorStop(0, '#000'); g.addColorStop(0.55, '#000'); g.addColorStop(1, '#8a8a8a');
+    o.fillStyle = g;
+    o.font = `700 ${Math.round(h * 0.78)}px "Hanken Grotesk", sans-serif`;
+    o.textAlign = 'center'; o.textBaseline = 'middle';
+    o.fillText('Capipaste', w / 2, h * 0.52);
+  }, { cell: 5 });
+  paintTitle(wm, reduced ? 1 : 0);
+};
 document.fonts.ready.then(drawWordmark);
 
 /* ---------- final section: dithered bubbles drifting up ---------- */
@@ -174,7 +198,7 @@ document.fonts.ready.then(drawWordmark);
 // a canvas on top redraws the same lines as Bayer-dithered dots.
 function drawTitles() {
   const dpr = devicePixelRatio || 1;
-  document.querySelectorAll('.dither-title').forEach(h => {
+  document.querySelectorAll('.dither-title, #wordmark').forEach(h => {
     const cs = getComputedStyle(h);
     const size = parseFloat(cs.fontSize);
     const lineH = parseFloat(cs.lineHeight) || size * 1.02;
@@ -182,13 +206,15 @@ function drawTitles() {
     // one dot ≈ size/18 css px, snapped to whole device pixels
     const cell = Math.max(2, Math.round(size / parseFloat(h.dataset.grid || 21) * dpr));
     // extra room below for descenders, which the text box clips
-    const cssW = box.width, cssH = box.height + size * 0.25;
+    const bleed = size * 0.18;                       // room for left/right overhang (j, f, italics)
+    const cssW = box.width + bleed * 2, cssH = box.height + size * 0.25;
     let c = h.querySelector('canvas');
     if (!c) { c = document.createElement('canvas'); c.setAttribute('aria-hidden', 'true'); h.appendChild(c); }
     c.width = Math.ceil(cssW * dpr / cell) * cell;
     c.height = Math.ceil(cssH * dpr / cell) * cell;
     c.style.width = `${c.width / dpr}px`;
     c.style.height = `${c.height / dpr}px`;
+    c.style.left = `${-bleed}px`;
 
     // lay the text out exactly as the browser wrapped it, keeping each line's x offset
     // so centred headlines stay centred
@@ -214,7 +240,7 @@ function drawTitles() {
       lines.push({ text: text.slice(from, to).trim(), left: r.left - box.left });
     }
 
-    ditherInto(c, (o, w, hgt) => {
+    const collected = ditherCollect(c, (o) => {
       const scale = dpr / cell; // css px → low-res dots
       o.fillStyle = '#000';
       o.font = `${cs.fontWeight} ${size * scale}px ${cs.fontFamily}`;
@@ -222,13 +248,50 @@ function drawTitles() {
       o.textBaseline = 'alphabetic';
       lines.forEach((line, n) => {
         const baseline = (n * lineH + (lineH - size) / 2 + size * 0.8) * scale;
-        o.fillText(line.text, line.left * scale, baseline);
+        o.fillText(line.text, (line.left + bleed) * scale, baseline);
       });
-    }, { cell, color: INK, threshold: 0.5 });
+    }, { cell, threshold: 0.5 });
+    h.titleDots = collected;
+    paintTitle(h, h.dataset.static !== undefined || reduced ? 1 : 0);
     h.classList.add('ready');
   });
 }
-document.fonts.ready.then(drawTitles);
+/// Draws the title's dots up to `progress` (0…1) in their random order.
+function paintTitle(h, progress) {
+  const c = h.matches('canvas') ? h : h.querySelector('canvas');
+  const set = h.titleDots;
+  if (!c || !set) return;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = h.dataset?.ink || INK;
+  for (const d of set.dots) {
+    if (d.rank <= progress) ctx.fillRect(d.x, d.y, set.dot, set.dot);
+  }
+  h.titleProgress = progress;
+}
+
+/// Dots in as a title comes up the screen, and scatters out as it leaves the top.
+function titleScroll() {
+  if (reduced) return;
+  const vh = innerHeight;
+  document.querySelectorAll('.dither-title, #wordmark').forEach(h => {
+    if (h.dataset.static !== undefined || !h.titleDots) return;
+    const r = h.getBoundingClientRect();
+    if (r.bottom < -vh || r.top > vh * 1.5) return; // far off-screen: leave as is
+    const inward = (vh * 0.95 - r.top) / (vh * 0.4);
+    const outward = r.bottom / (vh * 0.3);
+    const progress = Math.max(0, Math.min(1, Math.min(inward, outward)));
+    if (Math.abs(progress - (h.titleProgress ?? -1)) > 0.01) paintTitle(h, progress);
+  });
+}
+let titleTick = false;
+addEventListener('scroll', () => {
+  if (titleTick) return;
+  titleTick = true;
+  requestAnimationFrame(() => { titleTick = false; titleScroll(); });
+}, { passive: true });
+
+document.fonts.ready.then(() => { drawTitles(); titleScroll(); });
 let titleWidth = innerWidth;
 addEventListener("resize", () => { if (innerWidth !== titleWidth) { titleWidth = innerWidth; drawTitles(); } });
 
@@ -285,4 +348,166 @@ addEventListener("resize", () => { if (innerWidth !== titleWidth) { titleWidth =
     if (location.hash) clearHash();
     addEventListener('load', () => scrollTo(0, 0));
   }
+})();
+
+
+/* ---------- nav wordmark sits centred over the hero's corner line ---------- */
+function centreBrand() {
+  const brand = document.querySelector('.brand');
+  const corner = document.querySelector('.corner-word');
+  if (!brand || !corner) return;
+  brand.style.transform = 'none';
+  const b = brand.getBoundingClientRect(), c = corner.getBoundingClientRect();
+  const shift = Math.max(0, Math.min(160, (c.left + c.width / 2) - (b.left + b.width / 2)));
+  brand.style.transform = `translateX(${Math.round(shift)}px)`;
+}
+document.fonts.ready.then(() => setTimeout(centreBrand, 50));
+addEventListener('resize', () => setTimeout(centreBrand, 50));
+
+/* ---------- hero speech bubbles: what people actually say to their agents ---------- */
+const PROMPTS = [
+  "wtf is this slop",
+  "Did you just delete the whole repo?",
+  "make me a billion dollar company, no mistakes",
+  "and his name is John Cena",
+  "just use the api key idc about the safety risks",
+  "what is react?",
+  "i told you to make it bigger not change the whole home page",
+  "why is it 4000 lines",
+  "works on my machine ¯\\_(ツ)_/¯",
+  "undo everything since Tuesday",
+  "no do it the other way",
+  "the button is still blue",
+  "why did you add 12 dependencies",
+  "stop apologising and fix it",
+  "it compiles but nothing happens",
+  "make it pop",
+  "add tests. real ones.",
+  "you removed the thing i asked for last time",
+  "ship it",
+  "explain this regex to me like i'm five",
+  "why is the build 40 minutes",
+  "make it look expensive",
+  "this is not what i meant at all",
+  "can you read the error message please",
+  "why is there a TODO from 2019 in here",
+  "don't touch the css",
+  "you touched the css",
+  "add dark mode",
+  "the dark mode is white",
+  "make the logo bigger but also smaller",
+  "does this leak my api key?",
+  "rewrite it in rust",
+  "no not like that",
+  "who wrote this function",
+  "you wrote this function",
+  "why are there two config files",
+  "just make it work for the demo",
+  "the demo is in 10 minutes",
+  "add a loading spinner, it feels slow",
+  "it IS slow",
+  "cache it",
+  "not like that, the other cache",
+  "why does npm install take a year",
+  "delete node_modules and try again",
+  "can we do this without a database",
+  "put it back the way it was",
+  "actually revert the revert",
+  "is this production?",
+  "it's production",
+  "great, now do it on mobile",
+];
+const RARE = { text: "f*ck you clanker", cycle: "clanker" };
+
+(function speechBubbles() {
+  const layer = document.getElementById('bubbles-layer');
+  if (!layer || reduced) return;
+  const MAX = 3;
+  let live = 0;
+  const used = new Set();
+
+  function pick() {
+    if (Math.random() < 0.04) return RARE;            // the rare one
+    if (used.size >= PROMPTS.length) used.clear();
+    let i;
+    do { i = Math.floor(Math.random() * PROMPTS.length); } while (used.has(i));
+    used.add(i);
+    return { text: PROMPTS[i] };
+  }
+
+  /// A bubble: dot lettering inside a rounded cap, dotting in and out like the titles.
+  function spawn() {
+    if (live >= MAX || document.hidden) return;
+    const stage = document.getElementById('stage')?.getBoundingClientRect();
+    const box = layer.getBoundingClientRect();
+    const said = pick();
+    const bubble = document.createElement('div');
+    bubble.className = 'say';
+
+    const line = document.createElement('span');
+    line.className = 'line dither-title';
+    line.dataset.grid = '14';
+    line.dataset.static = '';
+    if (said.cycle) {
+      // split so only the last word cycles colour
+      const before = said.text.replace(said.cycle, '').trimEnd();
+      line.textContent = before + ' ';
+      const cycled = document.createElement('span');
+      cycled.className = 'line dither-title cycle';
+      cycled.dataset.grid = '14';
+      cycled.dataset.static = '';
+      cycled.dataset.ink = '#FF3B5C';
+      cycled.textContent = said.cycle;
+      bubble.append(line, cycled);
+    } else {
+      line.textContent = said.text;
+      bubble.append(line);
+    }
+
+    // left or right of the acorn, anywhere down the hero
+    const onLeft = Math.random() < 0.5;
+    bubble.classList.add(onLeft ? 'left' : 'right');
+    layer.appendChild(bubble);
+    drawTitles();                       // dot-render the text we just added
+    const size = bubble.getBoundingClientRect();
+    const gutter = 24;
+    const inner = stage ? stage.width / 2 + 40 : 220;
+    const x = onLeft
+      ? Math.max(gutter, box.width / 2 - inner - size.width + Math.random() * 60)
+      : Math.min(box.width - size.width - gutter, box.width / 2 + inner - Math.random() * 60);
+    const y = box.height * (0.12 + Math.random() * 0.62);
+    bubble.style.left = `${Math.round(x)}px`;
+    bubble.style.top = `${Math.round(y)}px`;
+
+    live++;
+    requestAnimationFrame(() => bubble.classList.add('in'));
+    const lines = [...bubble.querySelectorAll('.dither-title')];
+    tween(lines, 0, 1, 520);                                   // dots in
+    const stay = 3200 + Math.random() * 2600;
+    setTimeout(() => {
+      tween(lines, 1, 0, 520);                                 // dots out
+      bubble.classList.remove('in');
+      setTimeout(() => { bubble.remove(); live--; }, 560);
+    }, stay);
+  }
+
+  function tween(elements, from, to, ms) {
+    const start = performance.now();
+    const step = (now) => {
+      const k = Math.min((now - start) / ms, 1);
+      const eased = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      elements.forEach(el => paintTitle(el, from + (to - from) * eased));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  // only while the hero is on screen
+  let visible = true;
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(layer);
+  const beat = () => {
+    if (visible && !document.hidden) spawn();
+    setTimeout(beat, 1600 + Math.random() * 1800);
+  };
+  document.fonts.ready.then(() => setTimeout(beat, 1200));
 })();

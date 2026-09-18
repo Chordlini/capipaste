@@ -38,23 +38,23 @@ img { display: block; max-width: 100%; }
   transition: border-color .3s;
 }
 .nav.scrolled { border-bottom-color: var(--rule); }
-.nav .wrap { display: flex; align-items: center; gap: 28px; height: var(--nav-h); }
-.brand { text-decoration: none; display: block; line-height: 0; }
+.nav-row { display: flex; align-items: center; gap: 28px; height: var(--nav-h); padding: 0 var(--pad); }
+.brand { text-decoration: none; display: block; line-height: 0; will-change: transform; }
 .brand-word { display: inline-block; font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: 0.015em; }
 /* key-row nav: each link is a numbered key; number keys jump there */
 .nav ul { display: flex; gap: 12px; list-style: none; padding: 0; margin-left: auto; align-items: center; }
 /* Mac keycaps: symbol above the label, like the keys on an Apple keyboard */
 .key, .cta {
   position: relative; display: grid; align-content: end; gap: 2px;
-  height: 58px; padding: 0 14px 9px; border-radius: 10px;
-  text-decoration: none; font-size: 15px; font-weight: 600; line-height: 1.1;
+  height: 48px; padding: 0 12px 7px; border-radius: 9px;
+  text-decoration: none; font-size: 14px; font-weight: 600; line-height: 1.1;
   transform: translateY(-3px);
   transition: transform .09s ease, box-shadow .09s ease, background .2s;
 }
-.key i, .cta i { font-style: normal; font-size: 15px; line-height: 1; opacity: .75; }
+.key i, .cta i { font-style: normal; font-size: 13px; line-height: 1; opacity: .75; }
 /* shift key */
 .key {
-  justify-items: start; min-width: 122px; color: var(--ink); background: var(--paper);
+  justify-items: start; min-width: 104px; color: var(--ink); background: var(--paper);
   box-shadow: inset 0 0 0 1.5px var(--ink), 0 5px 0 var(--ink);
 }
 .key:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1.5px var(--ink), 0 3px 0 var(--ink); }
@@ -63,7 +63,7 @@ img { display: block; max-width: 100%; }
 }
 /* return key */
 .cta {
-  justify-items: end; text-align: right; min-width: 188px; flex: none;
+  justify-items: end; text-align: right; min-width: 158px; flex: none;
   color: var(--paper); background: var(--ink);
   box-shadow: 0 5px 0 #000, 0 12px 22px rgba(23,23,26,.16);
 }
@@ -358,3 +358,29 @@ kbd.down { transform: translateY(2px); box-shadow: inset 0 0 0 1.5px var(--ink),
 
 /* anchors land below the sticky nav */
 section[id] { scroll-margin-top: calc(var(--nav-h) + 24px); }
+
+/* ---------- hero speech bubbles ---------- */
+.bubbles-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 3; }
+.say {
+  position: absolute; max-width: min(340px, 40vw);
+  padding: 12px 16px 14px; border-radius: 14px;
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  box-shadow: inset 0 0 0 2px var(--ink), 0 10px 24px rgba(23,23,26,.10);
+  opacity: 0; transition: opacity .45s ease, transform .45s cubic-bezier(.2,.8,.2,1);
+  transform: translateY(8px);
+}
+.say.in { opacity: 1; transform: none; }
+/* tail, on whichever side the bubble sits */
+.say::after {
+  content: ""; position: absolute; bottom: -9px; width: 14px; height: 14px;
+  background: var(--paper); box-shadow: inset 0 0 0 2px var(--ink);
+  transform: rotate(45deg); clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+.say.left::after { left: 22px; }
+.say.right::after { right: 22px; }
+.say .line { display: inline-block; position: relative; vertical-align: top; font-size: 17px; font-weight: 600; line-height: 1.25; letter-spacing: 0.015em; }
+/* the rare one: dots cycle through hues like an old terminal */
+.say .cycle canvas { animation: hue 2.4s linear infinite; }
+@keyframes hue { to { filter: hue-rotate(360deg); } }
+@media (max-width: 900px) { .say { max-width: 62vw; } .say .line { font-size: 15px; } }
+@media (prefers-reduced-motion: reduce) { .bubbles-layer { display: none; } }
