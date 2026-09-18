@@ -20,15 +20,29 @@ Capipaste is a small macOS menu-bar app for giving visual feedback to coding age
 - **Dictate** — hold **right ⌘**, say it, let go. A bar shows the words as they land; the text goes on the clipboard and pastes into whatever you were typing in. No screenshot involved. (Hold-to-talk and auto-paste need Accessibility.)
 - **Capture** — ⌘⇧S opens the native macOS region picker (Space switches to window capture, Esc cancels).
 - **Talk** — a card pops up with the screenshot and starts listening. Speech is transcribed **on your Mac**; nothing is uploaded.
-- **Mark it up** — draw on the screenshot, erase just the part under the eraser, undo per stroke. Pinch or ⌘+ / ⌘− to zoom, two-finger scroll to pan.
+- **Mark it up** — pen, arrow, box and **blur** (pixelates secrets or patient details before anything leaves your screen). The eraser removes just the part under it, undo per stroke. Pinch or ⌘+ / ⌘− to zoom, two-finger scroll to pan.
+- **Several screenshots, one note** — press ⌘⇧S again while the card is open to add another region (before/after, two places at once). Thumbnails switch between them; recording keeps going.
+- **Clips** — ⌃⌘S records a region with the native macOS video picker (up to 30 s). The first frame opens in the card to draw on; the note carries the `.mov` plus frames from through the clip, so agents that can't watch video still see what happened.
+- **Reads the screen** — the text in your screenshot is read on your Mac (Apple Vision) and pasted under your note, so a terminal agent sees the error message, not just a file path.
+- **Tidy** — turns "um so the uh button, no wait, the header…" into one clear instruction, on-device: Apple's Foundation Models when Apple Intelligence is on, otherwise a downloadable Qwen 3.5 2B (MLX). A rewrite that drops a number or wanders off is thrown away and your own words are used.
+- **Your words** — add project names and code terms (`useEffect`, `Supabase`) in Settings; Nemotron is biased toward them and the transcript is spelled right. Names read off the screenshot are added for that capture automatically.
+- **Context** — the note says where you were: app, window title and, in Safari/Chrome/Arc/Brave/Edge, the page URL.
+- **History** — every note is saved next to its PNG. The menu lists recent captures to copy again, and ⌃⌘V pastes the last one where you are.
 - **Never lose a take** — if the transcript fails or comes back empty while you were talking, it retries once, then keeps the card open and asks you to say it again. Typing takes over from dictation so speech never overwrites your edits.
 - **Paste** — ↩ copies the annotated PNG and your note, hands focus back to the app you captured from, and closes. The PNG is also saved to `~/Pictures/Capipaste`, and the note ends with its path:
 
+  ````
+  The Upgrade button overlaps the nav on mobile; pin the header and give it 16px of room.
+
+  Context: Safari — "Pricing – Acme" — http://localhost:3000/pricing
+
+  Text in the screenshot:
+  ```text
+  Upgrade to Pro
   ```
-  Make the header sticky and give the Upgrade button more room.
 
   [screenshot: /Users/you/Pictures/Capipaste/Capipaste 2026-09-17 at 01.14.53.png]
-  ```
+  ````
 
 <p align="center">
   <img src="docs/card.png" alt="The Capipaste card: screenshot with drawing tools, live waveform, transcript and keyboard hints" width="720">
@@ -38,7 +52,7 @@ Capipaste is a small macOS menu-bar app for giving visual feedback to coding age
 
 | You pressed ⌘⇧S from… | Clipboard gets | Why |
 |---|---|---|
-| A terminal (cmux, Ghostty, Terminal, iTerm2, Warp, WezTerm, kitty, Alacritty) | Note + image path only | Claude Code attaches a clipboard image and drops the text; the path lets it open the image instead. |
+| A terminal (cmux, Ghostty, Terminal, iTerm2, Warp, WezTerm, kitty, Alacritty, Terax, Rio, Hyper) | Note + screen text + image path | Claude Code attaches a clipboard image and drops the text; the path lets it open the image instead. |
 | Anything else (Codex, chat apps, docs) | PNG **and** note | Each app takes what it supports. |
 
 After ↩ Capipaste hands focus back to the app you started from, so ⌘V lands there.
@@ -72,12 +86,14 @@ Pick a model and microphone from the menu bar. Models download on demand (via [F
 
 | Key | Action |
 |---|---|
-| ⌘⇧S | Capture |
+| ⌘⇧S | Capture (again while the card is open: add a shot) |
+| ⌃⌘S | Record a clip |
+| ⌃⌘V | Paste the last capture again |
 | hold right ⌘ | Dictate (configurable) |
 | ↩ | Stop, transcribe, copy, close |
 | ⇧↩ | New line in the note |
 | Esc | Cancel |
-| D / E | Draw / erase |
+| D / A / B / X / E | Pen / arrow / box / blur / erase |
 | ⌘Z | Undo |
 | ⌘+ / ⌘− / ⌘0 | Zoom in / out / reset |
 
@@ -121,7 +137,15 @@ Capipaste/
   Waveform.swift     dot-matrix level meter
   Recorder.swift     microphone list (Core Audio) and 16 kHz capture
   STT.swift          model catalog, downloads, transcription with retry
-  Output.swift       flattens strokes onto the PNG, saves, writes the clipboard
+  Output.swift       strokes, arrows, boxes and blur onto the PNG; saves; writes the clipboard
+  OCR.swift          reads the text in a capture (Vision)
+  Tidy.swift         on-device note rewrite (Foundation Models, Qwen 3.5 2B via MLX)
+  Vocabulary.swift   your words: speech biasing and spelling fixes
+  CaptureContext.swift  app, window title and browser URL
+  History.swift      saved notes, recent captures, paste last
+  Clip.swift         screen recordings and their key frames
+checks/
+  main.swift         vocabulary self-check (run line at the top)
 brand/
   BRAND.md           brand bible: palette, type, the dither engine, motion
   make-art.swift     the engine (icon, mark, dot map, loops, banners, steps)
@@ -143,6 +167,10 @@ open -n /Applications/Capipaste.app --args -autocapture 200,150,1000,600 -autosu
 open -n /Applications/Capipaste.app --args -demo design/sample-shot.png -snapshot /tmp/card.png
 open -n /Applications/Capipaste.app --args -sttfile speech.aiff                         # transcribe a file with the active model
 open -n /Applications/Capipaste.app --args -setupdemo -menushot /tmp/menu.png            # render the menu, with the setup steps unmet
+open -n /Applications/Capipaste.app --args -demo a.png -addshot b.png -autosubmit -note "typed note"   # two shots, typed note
+open -n /Applications/Capipaste.app --args -autoclip 100,100,500,300 -autosubmit           # 3 s clip of a fixed rect
+open -n /Applications/Capipaste.app --args -tidy "um so the button, uh, it's grey" -tidydownload   # rewrite one note
+open -n /Applications/Capipaste.app --args -recopy                                          # put the last capture back on the clipboard
 ```
 
 ### Brand and artwork
