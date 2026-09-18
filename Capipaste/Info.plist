@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Capipaste reads the address of the page you captured so the note says where the screenshot came from.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Capipaste turns what you say into the note that goes with your screenshot. Audio never leaves your Mac.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

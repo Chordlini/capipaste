@@ -41,6 +41,7 @@ targets:
         CFBundleVersion: "1"
         LSUIElement: true
         NSMicrophoneUsageDescription: Capipaste turns what you say into the note that goes with your screenshot. Audio never leaves your Mac.
+        NSAppleEventsUsageDescription: Capipaste reads the address of the page you captured so the note says where the screenshot came from.
         NSSpeechRecognitionUsageDescription: Capipaste can use Apple's on-device speech model when no other model is downloaded.
     settings:
       base:

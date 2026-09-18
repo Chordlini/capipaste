@@ -46,6 +46,7 @@ private struct GeneralSettings: View {
     @Environment(Permissions.self) private var permissions
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @AppStorage("ocrMode") private var ocrMode: OCR.Mode = .terminals
+    @AppStorage("context") private var context = true
 
     var body: some View {
         Form {
@@ -61,6 +62,13 @@ private struct GeneralSettings: View {
                     ForEach(PushToTalk.Trigger.allCases) { Text($0.title).tag($0) }
                 }
                 Text("Hold the key, say what you want, let go. The text lands on the clipboard\(permissions.canDictateHandsFree ? " and pastes where you were." : ". Grant Accessibility to have it paste for you.")")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Section("Context") {
+                Toggle("Add the app, window title and page URL to the note", isOn: $context)
+                Text("So the agent knows where you were. The page URL works in Safari, Chrome, Arc, Brave and Edge; macOS asks once per browser.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

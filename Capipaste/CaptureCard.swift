@@ -9,10 +9,11 @@ final class CaptureCard {
     private var hosting: NSView?
     private var scrollMonitor: Any?
 
-    init(image: NSImage, mic: AudioInput?, stt: STT, textOnly: Bool = false, onClose: @escaping () -> Void) {
+    init(image: NSImage, mic: AudioInput?, stt: STT, textOnly: Bool = false, context: CaptureContext? = nil, onClose: @escaping () -> Void) {
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
         let model = CardModel(image: image, mic: mic, stt: stt, screen: screen?.visibleFrame.size ?? CGSize(width: 1440, height: 900))
         model.textOnly = textOnly
+        model.context = context
         self.model = model
         panel = KeyPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
                          backing: .buffered, defer: false)
@@ -221,6 +222,8 @@ final class CardModel {
     private var levelCount = 0
     /// Copy only the note (with the image path), for terminals.
     var textOnly = false
+    /// App, window and page the first capture came from.
+    var context: CaptureContext?
     private var peakLevel: Float = 0
     /// True while the audio device is being opened on a background thread.
     private var startingMic = false
@@ -490,7 +493,7 @@ final class CardModel {
                 let wantsOCR = mode == .always || (mode == .terminals && textOnly)
                 var screenTexts: [String] = []
                 for shot in shots { screenTexts.append(wantsOCR ? await shot.ocr.value : "") }
-                let saved = try Output.deliver(pngs: pngs, note: text, screenTexts: screenTexts, textOnly: textOnly)
+                let saved = try Output.deliver(pngs: pngs, note: text, context: context?.line, screenTexts: screenTexts, textOnly: textOnly)
                 trace("card: delivered \(saved.map(\.lastPathComponent)), text only=\(textOnly)")
             } catch {
                 failure = "Couldn't save: \(error.localizedDescription)"

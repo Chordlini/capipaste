@@ -114,12 +114,13 @@ final class AppModel {
             // macOS shows its own prompt; the capture works once access is granted.
             CGRequestScreenCaptureAccess()
         }
+        let context = Task { await CaptureContext.read(from: source) }
         Task {
             let url = await Capture.region()
             trace("capture: region file=\(url?.path ?? "none")")
             guard let url, let image = NSImage(contentsOf: url) else { return }
             try? FileManager.default.removeItem(at: url)
-            await open(image, returnTo: source)
+            await open(image, returnTo: source, context: await context.value)
         }
     }
 
@@ -131,9 +132,9 @@ final class AppModel {
         Output.paste()
     }
 
-    private func open(_ image: NSImage, returnTo source: NSRunningApplication? = nil) async {
+    private func open(_ image: NSImage, returnTo source: NSRunningApplication? = nil, context: CaptureContext? = nil) async {
         trace("open: image \(image.size), mic status=\(AVCaptureDevice.authorizationStatus(for: .audio).rawValue)")
-        card = CaptureCard(image: image, mic: selectedMic, stt: stt, textOnly: Terminals.contains(source)) { [weak self] in
+        card = CaptureCard(image: image, mic: selectedMic, stt: stt, textOnly: Terminals.contains(source), context: context) { [weak self] in
             self?.card = nil
             // Hand focus back so ⌘V lands where the capture started.
             source?.activate()
@@ -382,6 +383,7 @@ enum Terminals {
     static let bundleIDs: Set<String> = [
         "com.apple.Terminal", "com.cmuxterm.app", "com.mitchellh.ghostty", "com.googlecode.iterm2",
         "dev.warp.Warp-Stable", "com.github.wez.wezterm", "net.kovidgoyal.kitty", "org.alacritty",
+        "app.crynta.terax", "com.raphaelamorim.rio", "co.zeit.hyper", "com.termius-dmg.mac",
     ]
 
     static func contains(_ app: NSRunningApplication?) -> Bool {
