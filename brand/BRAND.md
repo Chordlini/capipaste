@@ -92,7 +92,7 @@ Shared rules inside the engine:
 
 ---
 
-## 6. The engine on the web (`site/common.js`)
+## 6. The engine on the web (`capipaste-site/common.js`)
 
 The same look, drawn in the browser:
 
@@ -138,7 +138,7 @@ brand/
   assets/               icon, mark, dot map, loops, banner, social, steps
   archive-explorations/ rejected directions (sea-goat logo, Nokia-LCD UI)
   archive-backups/      the spin loop before the rim fix, and its engine
-site/                   the website (style.css tokens mirror §3)
+../capipaste-site/      the website, its own repo (style.css tokens mirror §3)
 design/                 app UI mockups (mockup.html) and sample screenshots
 docs/                   screenshots used by the README
 ```

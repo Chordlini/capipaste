@@ -55,11 +55,7 @@ scripts/release.sh 0.2.0 "What changed"
 
 ### Website
 
-A static landing page and FAQ live in [`site/`](site) — same e-ink system as the app's artwork, generated in the browser from the dither engine. Serve it with any static server:
-
-```sh
-cd site && python3 -m http.server 8766
-```
+The landing page and FAQ live in their own repo: [Chordlini/capipaste-site](https://github.com/Chordlini/capipaste-site). `brand/make.sh` refreshes its copies of the artwork when they sit side by side.
 
 ## Speech models
 

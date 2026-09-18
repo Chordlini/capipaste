@@ -19,7 +19,13 @@ for n in 16 32 64 128 256 512 1024; do
   sips -z $n $n $A/acorn-icon.png --out $ICONSET/icon-$n.png >/dev/null
 done
 
-# website copies
-cp $A/acorn-spin.gif $A/acorn-talk.gif $A/acorn-mark.png $A/social.png ../site/assets/
-sips -z 64 64 $A/acorn-mark.png --out ../site/assets/favicon.png >/dev/null
+# website copies (the site lives in its own repo; override with SITE_DIR)
+SITE_DIR="${SITE_DIR:-../capipaste-site}"
+if [ -d "$SITE_DIR/assets" ]; then
+  cp $A/acorn-spin.gif $A/acorn-talk.gif $A/acorn-mark.png $A/social.png "$SITE_DIR/assets/"
+  sips -z 64 64 $A/acorn-mark.png --out "$SITE_DIR/assets/favicon.png" >/dev/null
+  echo "site assets updated in $SITE_DIR"
+else
+  echo "site repo not found at $SITE_DIR — skipped its copies"
+fi
 echo "brand assets rebuilt"
