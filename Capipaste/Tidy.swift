@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModels
 import HuggingFace
+import MLX
 import MLXHuggingFace
 import MLXLLM
 import MLXLMCommon
@@ -39,6 +40,7 @@ final class Tidy {
     private(set) var problem: String?
     private var container: ModelContainer?
     private var warmApple: LanguageModelSession?
+    private var unloadTask: Task<Void, Never>?
 
     private let apple = SystemLanguageModel(guardrails: .permissiveContentTransformations)
     var appleAvailable: Bool {
@@ -58,6 +60,7 @@ final class Tidy {
     /// Loads the model while you're still talking, so the rewrite starts warm.
     func prewarm() {
         guard enabled else { return }
+        unloadTask?.cancel()
         switch engine {
         case .apple:
             let session = LanguageModelSession(model: apple, instructions: Self.instructions)
@@ -71,6 +74,7 @@ final class Tidy {
     }
 
     func rewrite(_ note: String, screen: String = "") async -> String? {
+        defer { if container != nil { unloadSoon() } } // also after short notes that skip the model
         let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard enabled, note.split(separator: " ").count >= 4 else { return nil } // short notes are already tidy
         let engine = self.engine
@@ -114,14 +118,27 @@ final class Tidy {
     @discardableResult
     private func loadLocal() async throws -> ModelContainer {
         if let container { return container }
-        // ponytail: the model stays in memory (~1.5 GB) once loaded; unload on idle if that matters
+        let began = Date()
         let loaded = try await #huggingFaceLoadModelContainer(configuration: Self.localModel) { progress in
             Task { @MainActor in self.progress = progress.fractionCompleted < 1 ? progress.fractionCompleted : nil }
         }
+        trace("tidy: loaded \(Self.localModel.name) in \(Int(Date().timeIntervalSince(began) * 1000)) ms")
         container = loaded
         progress = nil
         localReady = true
         return loaded
+    }
+
+    /// Frees the ~1.5 GB model 30 s after a take; the next key-down reloads it while you talk.
+    private func unloadSoon() {
+        unloadTask?.cancel()
+        unloadTask = Task {
+            try? await Task.sleep(for: .seconds(30))
+            guard !Task.isCancelled, container != nil else { return }
+            container = nil
+            MLX.GPU.clearCache()
+            trace("tidy: unloaded after 30 s idle")
+        }
     }
 
     func downloadLocal() {

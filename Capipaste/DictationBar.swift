@@ -60,6 +60,8 @@ final class DictationModel {
     var levels = [Float](repeating: 0, count: 96)
     var startedAt = Date()
     private var loudBuffers = 0
+    private var buffers = 0
+    private var peak: Float = 0
     private var heardSpeech: Bool { loudBuffers >= 8 }
 
     init(mic: AudioInput?, stt: STT, returnTo: NSRunningApplication?, autoPaste: Bool) {
@@ -91,8 +93,10 @@ final class DictationModel {
                 try recorder.start(device: mic) { samples, level in
                     Task { @MainActor in self?.receive(samples, level) }
                 }
+                trace("dictation: mic engine started on \(mic.name)")
                 await MainActor.run { self?.recording = true }
             } catch {
+                trace("dictation: mic start threw \(error)")
                 await MainActor.run { self?.failure = "Couldn't open \(mic.name)." }
             }
         }
@@ -101,6 +105,8 @@ final class DictationModel {
     private func receive(_ samples: [Float], _ level: Float) {
         levels.removeFirst()
         levels.append(level)
+        buffers += 1
+        peak = max(peak, level)
         if level > 0.6 { loudBuffers += 1 }
         stt.feed(samples)
     }
@@ -110,6 +116,7 @@ final class DictationModel {
         finishing = true
         recorder.stop()
         recording = false
+        trace("dictation: released after \(buffers) buffers, peak level \(peak), loud \(loudBuffers)")
         Task {
             let spoken = await stt.finish(expectSpeech: heardSpeech)
             finishing = false
