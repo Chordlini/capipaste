@@ -29,6 +29,6 @@ hdiutil create -volname "Capipaste" -srcfolder "$STAGE" -fs HFS+ -format UDZO -o
 git add -A
 git commit -m "Release $VERSION" || true
 git tag "v$VERSION" -f
-git push --follow-tags
+git push && git push -f origin "v$VERSION"
 gh release create "v$VERSION" "$DMG" "$ZIP" --title "Capipaste $VERSION" --notes "$NOTES"
 echo "released v$VERSION"
