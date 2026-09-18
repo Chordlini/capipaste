@@ -17,12 +17,16 @@ final class Permissions {
 
     private(set) var screen: State = .notAsked
     private(set) var mic: State = .notAsked
+    /// Only needed for hold-to-talk dictation and pasting for you.
+    private(set) var accessibility: State = .notAsked
     /// Screen Recording only takes effect after a relaunch, so remember we asked.
     private(set) var screenNeedsRestart = false
 
     /// `-setupdemo` pretends nothing is granted yet, to check the setup steps.
     let demo = CommandLine.arguments.contains("-setupdemo")
+    /// Capture + dictate are usable once these two are granted; Accessibility is extra.
     var ready: Bool { !demo && screen == .granted && mic == .granted }
+    var canDictateHandsFree: Bool { accessibility == .granted }
 
     var steps: [Step] {
         [
@@ -30,13 +34,17 @@ final class Permissions {
                  state: screen, settings: "Privacy_ScreenCapture"),
             Step(id: 2, title: "Microphone", why: "so you can say what should change",
                  state: mic, settings: "Privacy_Microphone"),
+            Step(id: 3, title: "Accessibility", why: "only for hold-to-talk dictation and pasting for you",
+                 state: accessibility, settings: "Privacy_Accessibility"),
         ]
     }
 
-    var remaining: Int { steps.filter { $0.state != .granted }.count }
+    /// The setup banner counts the two required steps; Accessibility is optional.
+    var remaining: Int { steps.prefix(2).filter { $0.state != .granted }.count }
 
     func refresh() {
-        if demo { screen = .notAsked; mic = .denied; return }
+        if demo { screen = .notAsked; mic = .denied; accessibility = .notAsked; return }
+        accessibility = AXIsProcessTrusted() ? .granted : .notAsked
         let hadScreen = screen == .granted
         screen = CGPreflightScreenCaptureAccess() ? .granted : .notAsked
         if screen == .granted, !hadScreen { screenNeedsRestart = false }
@@ -57,6 +65,10 @@ final class Permissions {
                 CGRequestScreenCaptureAccess()
                 openSettings(step)
             }
+        case 3:
+            // macOS only shows this prompt once; Settings is the reliable route.
+            _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt" as CFString: true] as CFDictionary)
+            openSettings(step)
         default:
             if mic == .notAsked {
                 AVCaptureDevice.requestAccess(for: .audio) { _ in

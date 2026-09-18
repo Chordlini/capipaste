@@ -75,3 +75,24 @@ enum Output {
         return url
     }
 }
+
+extension Output {
+    /// Dictation: text only, no image.
+    static func deliver(text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    /// Presses ⌘V in whatever app is frontmost. Needs Accessibility.
+    static func paste() {
+        guard AXIsProcessTrusted() else { return }
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let v: CGKeyCode = 9
+        let down = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: false)
+        down?.flags = .maskCommand
+        up?.flags = .maskCommand
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
+    }
+}

@@ -15,7 +15,9 @@
 
 Capipaste is a small macOS menu-bar app for giving visual feedback to coding agents.
 
-- **Setup** — the menu bar walks you through the two permissions macOS needs (Screen Recording, Microphone) and hides itself once they're granted.
+- **Setup** — the menu bar walks you through the permissions macOS needs (Screen Recording, Microphone, plus Accessibility for dictation) and hides itself once they're granted.
+- **Settings** — a window (⌘, from the menu, and on first launch) for shortcuts, hold-to-talk key, microphone, models, permissions and updates.
+- **Dictate** — hold **right ⌘**, say it, let go. A bar shows the words as they land; the text goes on the clipboard and pastes into whatever you were typing in. No screenshot involved. (Hold-to-talk and auto-paste need Accessibility.)
 - **Capture** — ⌘⇧S opens the native macOS region picker (Space switches to window capture, Esc cancels).
 - **Talk** — a card pops up with the screenshot and starts listening. Speech is transcribed **on your Mac**; nothing is uploaded.
 - **Mark it up** — draw on the screenshot, erase just the part under the eraser, undo per stroke. Pinch or ⌘+ / ⌘− to zoom, two-finger scroll to pan.
@@ -43,6 +45,14 @@ After ↩ Capipaste hands focus back to the app you started from, so ⌘V lands 
 
 If transcription fails or comes back empty while you were talking, Capipaste retries once. If that fails too, the card stays open and asks you to say it one more time.
 
+### Updates
+
+Capipaste checks GitHub releases and can install them itself if you turn that on in Settings (an automatic install only accepts a build signed with the same identity). Cut one with:
+
+```sh
+scripts/release.sh 0.2.0 "What changed"
+```
+
 ### Website
 
 A static landing page and FAQ live in [`site/`](site) — same e-ink system as the app's artwork, generated in the browser from the dither engine. Serve it with any static server:
@@ -67,6 +77,7 @@ Pick a model and microphone from the menu bar. Models download on demand (via [F
 | Key | Action |
 |---|---|
 | ⌘⇧S | Capture |
+| hold right ⌘ | Dictate (configurable) |
 | ↩ | Stop, transcribe, copy, close |
 | ⇧↩ | New line in the note |
 | Esc | Cancel |

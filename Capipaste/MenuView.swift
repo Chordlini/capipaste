@@ -18,7 +18,24 @@ struct MenuView: View {
                 Spacer()
                 Text("⌘⇧S").foregroundStyle(.secondary)
             }
+            row {
+                dismiss()
+                app.startDictation()
+            } label: {
+                Text("Dictate")
+                Spacer()
+                Text(app.pushToTalk.trigger == .off ? "" : app.pushToTalk.trigger.title.replacingOccurrences(of: "Hold ", with: "hold "))
+                    .foregroundStyle(.secondary)
+            }
             row { app.openCapturesFolder() } label: { Text("Open captures folder"); Spacer() }
+            row {
+                dismiss()
+                app.openSettings()
+            } label: {
+                Text("Settings…")
+                Spacer()
+                Text("⌘,").foregroundStyle(.secondary)
+            }
 
             divider
             header("Microphone")
