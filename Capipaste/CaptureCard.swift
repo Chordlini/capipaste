@@ -154,7 +154,10 @@ final class CardModel {
 
     init(image: NSImage, mic: AudioInput?, stt: STT, screen: CGSize) {
         self.image = image
-        ocr = Task { await OCR.text(in: image) }
+        let read = Task { await OCR.text(in: image) }
+        ocr = read
+        // Names on screen are what you're likely to say: teach them to the speech model for this take.
+        Task { [stt] in stt.sessionWords = Vocabulary.identifiers(in: await read.value) }
         self.mic = mic
         self.stt = stt
         // Fill up to 80% of the screen (minus the strip, note and footer), never upscaled past 1:1.

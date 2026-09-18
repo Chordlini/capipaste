@@ -76,6 +76,14 @@ final class STT {
     private(set) var problem: String?
     /// Latest live transcript for the running session.
     private(set) var live = ""
+    /// Extra words for this take, e.g. names read off the screenshot.
+    var sessionWords: [String] = [] {
+        didSet { enqueue { await self.engine.setVocabulary(Vocabulary.words + self.sessionWords) } }
+    }
+
+    private func spell(_ text: String) -> String {
+        Vocabulary.apply(text, words: Vocabulary.words + sessionWords, replacements: Vocabulary.replacements)
+    }
 
     private let engine = Engine()
     private var queue: Task<Void, Never>?
@@ -167,9 +175,10 @@ final class STT {
 
     func begin() {
         live = ""
+        sessionWords = []
         let model = inUse
         enqueue {
-            do { try await self.engine.begin(model) } catch {
+            do { try await self.engine.begin(model, words: Vocabulary.words) } catch {
                 self.problem = "\(model.title) failed to start: \(error.localizedDescription)"
             }
         }
@@ -177,7 +186,7 @@ final class STT {
 
     func feed(_ samples: [Float]) {
         enqueue {
-            if let text = await self.engine.feed(samples) { self.live = text }
+            if let text = await self.engine.feed(samples) { self.live = self.spell(text) }
         }
     }
 
@@ -195,8 +204,8 @@ final class STT {
                 trace("stt: \(model) attempt \(attempt) -> \(text.count) chars in \(ms) ms")
                 if !text.isEmpty || !expectSpeech {
                     await engine.cancel()
-                    live = text
-                    return text
+                    live = spell(text)
+                    return live
                 }
             } catch {
                 trace("stt: \(model) attempt \(attempt) failed: \(error)")
@@ -258,8 +267,9 @@ private actor Engine {
         }
     }
 
-    func begin(_ model: SpeechModel) async throws {
+    func begin(_ model: SpeechModel, words: [String]) async throws {
         try await load(model)
+        await setVocabulary(words)
         await nemotron?.reset()
         self.model = model
         samples = []
@@ -284,6 +294,11 @@ private actor Engine {
         default:
             return nil
         }
+    }
+
+    /// Nudges Nemotron toward these spellings while it decodes (other models get the text fix only).
+    func setVocabulary(_ words: [String]) async {
+        await nemotron?.setCustomVocabulary(words.map { CustomVocabularyTerm(text: $0) })
     }
 
     /// Stops taking audio; the clip stays around for `transcribe` until `cancel`.

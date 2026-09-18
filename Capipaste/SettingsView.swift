@@ -89,6 +89,7 @@ private struct GeneralSettings: View {
 private struct SpeechSettings: View {
     @Environment(AppModel.self) private var app
     @Environment(STT.self) private var stt
+    @AppStorage("vocabulary") private var vocabulary = ""
 
     var body: some View {
         Form {
@@ -126,6 +127,14 @@ private struct SpeechSettings: View {
                 if let problem = stt.problem {
                     Text(problem).font(.callout).foregroundStyle(Color.ink)
                 }
+            }
+            Section("Vocabulary") {
+                TextEditor(text: $vocabulary)
+                    .font(.system(size: 13, design: .monospaced))
+                    .frame(height: 90)
+                Text("One per line. A word like `useEffect` or `Supabase` fixes its spelling and helps Nemotron hear it; `super base = Supabase` replaces a mishearing. Names in your screenshot are added for that capture automatically.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             TidySettings(tidy: app.tidy)
         }
