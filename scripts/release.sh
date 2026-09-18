@@ -10,7 +10,7 @@ NOTES="${2:-}"
 # keep Info.plist in step with the tag
 /usr/bin/sed -i '' "s/CFBundleShortVersionString: \".*\"/CFBundleShortVersionString: \"$VERSION\"/" project.yml
 xcodegen generate >/dev/null
-xcodebuild -project Capipaste.xcodeproj -scheme Capipaste -configuration Release -derivedDataPath build build -quiet
+xcodebuild -project Capipaste.xcodeproj -scheme Capipaste -configuration Release -derivedDataPath build -skipPackagePluginValidation -skipMacroValidation build -quiet
 
 APP="build/Build/Products/Release/Capipaste.app"
 ZIP="build/Capipaste.app.zip"

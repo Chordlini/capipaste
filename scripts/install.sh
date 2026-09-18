@@ -3,7 +3,7 @@
 set -e
 cd "$(dirname "$0")/.."
 xcodegen generate >/dev/null
-xcodebuild -project Capipaste.xcodeproj -scheme Capipaste -configuration Release -derivedDataPath build build -quiet
+xcodebuild -project Capipaste.xcodeproj -scheme Capipaste -configuration Release -derivedDataPath build -skipPackagePluginValidation -skipMacroValidation build -quiet
 pkill -x Capipaste || true
 rm -rf /Applications/Capipaste.app
 cp -R build/Build/Products/Release/Capipaste.app /Applications/

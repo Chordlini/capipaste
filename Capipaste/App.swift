@@ -32,6 +32,7 @@ final class AppModel {
     let stt = STT()
     let permissions = Permissions()
     let updater = Updater()
+    let tidy = Tidy()
     private(set) var pushToTalk: PushToTalk!
     fileprivate(set) var dictation: DictationBar?
     var mics: [AudioInput] = []
@@ -72,6 +73,7 @@ final class AppModel {
         dictateIfRequested()
         settingsCheckIfRequested()
         updateCheckIfRequested()
+        tidyIfRequested()
     }
 
     func refreshMics() {
@@ -116,6 +118,24 @@ final class AppModel {
         guard let i = args.firstIndex(of: "-demo"), i + 1 < args.count,
               let image = NSImage(contentsOfFile: args[i + 1]) else { return }
         Task { await open(image) }
+    }
+
+    /// `-tidy <note>` rewrites one note, logs it and quits (testing). Add `-tidydownload` to fetch the local model first.
+    private func tidyIfRequested() {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "-tidy"), i + 1 < args.count else { return }
+        Task {
+            if args.contains("-tidydownload"), !tidy.localReady {
+                tidy.downloadLocal()
+                while !tidy.localReady, tidy.problem == nil { try? await Task.sleep(for: .milliseconds(500)) }
+            }
+            trace("tidy test: engine=\(tidy.engine) problem=\(tidy.problem ?? "none")")
+            for _ in 0..<2 { // second run is the warm one
+                let out = await tidy.rewrite(args[i + 1])
+                trace("tidy test: \(out ?? "<nil>")")
+            }
+            NSApp.terminate(nil)
+        }
     }
 
     /// `-updatecheck` runs one update check and logs the outcome (testing).

@@ -191,7 +191,7 @@ struct CardView: View {
             }
             .overlay(alignment: .topLeading) {
                 if model.finishing {
-                    Text(model.text.isEmpty ? "Transcribing…" : model.text)
+                    Text(model.tidying ? "Tidying…" : model.text.isEmpty ? "Transcribing…" : model.text)
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)

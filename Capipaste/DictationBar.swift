@@ -54,6 +54,7 @@ final class DictationModel {
     var text = ""
     var recording = false
     var finishing = false
+    var tidying = false
     var done = false
     var failure: String?
     var levels = [Float](repeating: 0, count: 96)
@@ -81,6 +82,7 @@ final class DictationModel {
             return
         }
         stt.begin()
+        AppModel.shared.tidy.prewarm()
         startedAt = .now
         loudBuffers = 0
         let recorder = self.recorder
@@ -119,8 +121,11 @@ final class DictationModel {
                 close()
                 return
             }
-            text = spoken
-            Output.deliver(text: spoken)
+            tidying = true
+            let note = await AppModel.shared.tidy.rewrite(spoken) ?? spoken
+            tidying = false
+            text = note
+            Output.deliver(text: note)
             done = true
             trace("dictation: delivered \(spoken.count) chars, paste=\(autoPaste)")
             NSSound(named: "Pop")?.play()
@@ -189,6 +194,7 @@ struct DictationView: View {
     private var caption: String {
         if let failure = model.failure { return failure }
         if model.done { return model.text }
+        if model.tidying { return "Tidying…" }
         if model.finishing { return model.live.isEmpty ? "Transcribing…" : model.live }
         if !model.live.isEmpty { return model.live }
         return model.recording ? "Listening… let go when you're done" : "Starting the mic…"

@@ -128,6 +128,7 @@ final class CardModel {
     var userEdited = false
     var recording = false
     var finishing = false
+    var tidying = false
     var copied = false
     var failure: String?
     var startedAt = Date()
@@ -254,6 +255,7 @@ final class CardModel {
         levelCount = 0
         peakLevel = 0
         stt.begin()
+        AppModel.shared.tidy.prewarm()
         startedAt = .now
         stoppedAfter = nil
         startingMic = true
@@ -350,6 +352,14 @@ final class CardModel {
                     return
                 }
                 if !final.isEmpty { text = final }
+                if !userEdited {
+                    finishing = true
+                    tidying = true
+                    let screen = await ocr?.value ?? ""
+                    if let tidy = await AppModel.shared.tidy.rewrite(text, screen: screen) { text = tidy }
+                    tidying = false
+                    finishing = false
+                }
             }
             guard let png = Output.render(image, strokes: strokes, lineWidth: Stroke.width / fitScale) else {
                 failure = "Couldn't render the screenshot."

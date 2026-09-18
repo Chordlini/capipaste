@@ -127,8 +127,40 @@ private struct SpeechSettings: View {
                     Text(problem).font(.callout).foregroundStyle(Color.ink)
                 }
             }
+            TidySettings(tidy: app.tidy)
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct TidySettings: View {
+    @Bindable var tidy: Tidy
+
+    var body: some View {
+        Section("Tidy") {
+            Toggle("Tidy spoken notes before pasting", isOn: $tidy.enabled)
+            Text("Drops the ums and false starts and turns what you said into one clear instruction. Runs on your Mac. \(tidy.status)")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Local model: Qwen 3.5 2B")
+                    Text("1.7 GB. Only used when Apple Intelligence is off.").font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let progress = tidy.progress {
+                    ProgressView(value: progress).frame(width: 90)
+                } else if tidy.localReady {
+                    Button(role: .destructive) { tidy.deleteLocal() } label: { Image(systemName: "trash") }
+                        .buttonStyle(.borderless)
+                } else {
+                    Button("Download") { tidy.downloadLocal() }
+                }
+            }
+            if let problem = tidy.problem {
+                Text(problem).font(.callout).foregroundStyle(Color.ink)
+            }
+        }
     }
 }
 
