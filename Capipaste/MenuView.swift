@@ -4,10 +4,12 @@ import SwiftUI
 struct MenuView: View {
     @Environment(AppModel.self) private var app
     @Environment(STT.self) private var stt
+    @Environment(Permissions.self) private var permissions
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !permissions.ready { setup; divider }
             row {
                 dismiss()
                 app.capture()
@@ -52,7 +54,65 @@ struct MenuView: View {
         .padding(5)
         .frame(width: 330)
         .fixedSize(horizontal: false, vertical: true)
-        .onAppear { app.refreshMics() }
+        .onAppear { app.refreshMics(); permissions.refresh() }
+    }
+
+    // MARK: Setup
+
+    @ViewBuilder
+    private var setup: some View {
+        header("Setup · \(permissions.remaining) step\(permissions.remaining == 1 ? "" : "s") left")
+        Text("macOS has to let Capipaste in before ⌘⇧S works.")
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 9).padding(.bottom, 6)
+            .fixedSize(horizontal: false, vertical: true)
+
+        ForEach(permissions.steps) { step in
+            MenuRow(action: { permissions.request(step) }) {
+                HStack(alignment: .top, spacing: 8) {
+                    stepMark(step)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("\(step.id). \(step.title)")
+                        Text(step.state == .granted ? "Allowed" : step.why)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    if step.state != .granted {
+                        Text(step.state == .denied ? "Open Settings" : "Allow")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.glacier)
+                    }
+                }
+                .padding(.horizontal, 9).padding(.vertical, 5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+
+        if permissions.screenNeedsRestart && permissions.screen != .granted {
+            row { permissions.relaunch() } label: {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Reopen Capipaste")
+                    Text("Screen Recording only applies after a restart")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+        }
+        row { permissions.refresh() } label: {
+            Text("Check again").foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+
+    private func stepMark(_ step: Permissions.Step) -> some View {
+        Image(systemName: step.state == .granted ? "checkmark.circle.fill" : "circle.dashed")
+            .font(.system(size: 12))
+            .foregroundStyle(step.state == .granted ? Color.glacier : .secondary)
+            .padding(.top, 1)
     }
 
     @ViewBuilder
@@ -100,7 +160,7 @@ struct MenuView: View {
     }
 
     private func row(action: @escaping () -> Void, @ViewBuilder label: () -> some View) -> some View {
-        MenuRow(action: action) { HStack(spacing: 8) { label() } }
+        MenuRow(action: action) { HStack(spacing: 8) { label() }.padding(.horizontal, 9).padding(.vertical, 4) }
     }
 
     private func check(_ on: Bool) -> some View {
@@ -124,7 +184,7 @@ struct MenuView: View {
 }
 
 /// Menu-style row: highlights in the accent colour on hover.
-private struct MenuRow<Label: View>: View {
+struct MenuRow<Label: View>: View {
     let action: () -> Void
     @ViewBuilder let label: Label
     @State private var hovering = false
@@ -132,7 +192,6 @@ private struct MenuRow<Label: View>: View {
     var body: some View {
         Button(action: action) {
             label
-                .padding(.horizontal, 9).padding(.vertical, 4)
                 .frame(minHeight: 24)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)

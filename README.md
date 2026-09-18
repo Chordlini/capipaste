@@ -15,6 +15,7 @@
 
 Capipaste is a small macOS menu-bar app for giving visual feedback to coding agents.
 
+- **Setup** — the menu bar walks you through the two permissions macOS needs (Screen Recording, Microphone) and hides itself once they're granted.
 - **Capture** — ⌘⇧S opens the native macOS region picker (Space switches to window capture, Esc cancels).
 - **Talk** — a card pops up with the screenshot and starts listening. Speech is transcribed **on your Mac**; nothing is uploaded.
 - **Mark it up** — draw on the screenshot, erase just the part under the eraser, undo per stroke. Pinch or ⌘+ / ⌘− to zoom, two-finger scroll to pan.
@@ -108,6 +109,7 @@ For checking the app without clicking through it (results go to `~/Library/Logs/
 open -n /Applications/Capipaste.app --args -autocapture 200,150,1000,600 -autosubmit   # capture a fixed rect, draw, erase, zoom, submit
 open -n /Applications/Capipaste.app --args -demo design/sample-shot.png -snapshot /tmp/card.png
 open -n /Applications/Capipaste.app --args -sttfile speech.aiff                         # transcribe a file with the active model
+open -n /Applications/Capipaste.app --args -setupdemo -menushot /tmp/menu.png            # render the menu, with the setup steps unmet
 ```
 
 ### Brand and artwork

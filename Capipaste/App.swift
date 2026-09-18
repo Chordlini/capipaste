@@ -15,6 +15,7 @@ struct CapipasteApp: App {
             MenuView()
                 .environment(app)
                 .environment(app.stt)
+                .environment(app.permissions)
         } label: {
             Image(nsImage: MenuGlyph.image)
         }
@@ -27,6 +28,7 @@ final class AppModel {
     static let shared = AppModel()
 
     let stt = STT()
+    let permissions = Permissions()
     var mics: [AudioInput] = []
     var micUID: String? = UserDefaults.standard.string(forKey: "micUID") {
         didSet { UserDefaults.standard.set(micUID, forKey: "micUID") }
@@ -39,10 +41,12 @@ final class AppModel {
     private init() {
         KeyboardShortcuts.onKeyUp(for: .capture) { [weak self] in self?.capture() }
         refreshMics()
+        permissions.refresh()
         Task { await stt.warmUp() }
         openDemoIfRequested()
         if CommandLine.arguments.contains("-autocapture") { capture() }
         transcribeFileIfRequested()
+        menuShotIfRequested()
     }
 
     func refreshMics() {
@@ -87,6 +91,26 @@ final class AppModel {
         guard let i = args.firstIndex(of: "-demo"), i + 1 < args.count,
               let image = NSImage(contentsOfFile: args[i + 1]) else { return }
         Task { await open(image) }
+    }
+
+    /// `-menushot <png>` renders the menu-bar panel to a file (testing).
+    private func menuShotIfRequested() {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "-menushot"), i + 1 < args.count else { return }
+        let view = MenuView()
+            .environment(self)
+            .environment(stt)
+            .environment(permissions)
+        Task {
+            try? await Task.sleep(for: .milliseconds(600)) // let fonts and state settle
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            if let image = renderer.nsImage, let tiff = image.tiffRepresentation,
+               let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                try? png.write(to: URL(fileURLWithPath: args[i + 1]))
+            }
+            NSApp.terminate(nil)
+        }
     }
 
     /// `-sttfile <audio>` runs the active speech model over a file and logs the result (testing).
