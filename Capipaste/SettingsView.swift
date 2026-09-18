@@ -45,6 +45,7 @@ private struct GeneralSettings: View {
     @Environment(AppModel.self) private var app
     @Environment(Permissions.self) private var permissions
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @AppStorage("ocrMode") private var ocrMode: OCR.Mode = .terminals
 
     var body: some View {
         Form {
@@ -59,6 +60,15 @@ private struct GeneralSettings: View {
                     ForEach(PushToTalk.Trigger.allCases) { Text($0.title).tag($0) }
                 }
                 Text("Hold the key, say what you want, let go. The text lands on the clipboard\(permissions.canDictateHandsFree ? " and pastes where you were." : ". Grant Accessibility to have it paste for you.")")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Section("Screenshot text") {
+                Picker("Include the text in the screenshot", selection: $ocrMode) {
+                    ForEach(OCR.Mode.allCases) { Text($0.title).tag($0) }
+                }
+                Text("Read on your Mac and pasted under your note. Terminals only get text, so this is how they see what was on screen.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -91,6 +91,12 @@ final class CaptureCard {
             let c = model.strokes.last?.points.first ?? .zero
             trace("card: zoom=\(model.zoom) offset=\(model.offset) circle starts at image \(c), image size \(model.image.size)")
             model.resetZoom()
+            // `-note <text>`: type the note instead of speaking it
+            let args = CommandLine.arguments
+            if let i = args.firstIndex(of: "-note"), i + 1 < args.count {
+                model.text = args[i + 1]
+                model.textChanged(args[i + 1])
+            }
             trace("card: autosubmit")
             model.submit()
         }
@@ -142,9 +148,12 @@ final class CardModel {
     var strokes: [Stroke] = []
     var current: Stroke?
     private var history: [[Stroke]] = []
+    /// Text read off the capture, started as soon as the card opens.
+    private var ocr: Task<String, Never>?
 
     init(image: NSImage, mic: AudioInput?, stt: STT, screen: CGSize) {
         self.image = image
+        ocr = Task { await OCR.text(in: image) }
         self.mic = mic
         self.stt = stt
         // Fill up to 80% of the screen (minus the strip, note and footer), never upscaled past 1:1.
@@ -347,7 +356,10 @@ final class CardModel {
                 return
             }
             do {
-                let saved = try Output.deliver(png: png, note: text, textOnly: textOnly)
+                let mode = OCR.Mode.current
+                let wantsOCR = mode == .always || (mode == .terminals && textOnly)
+                let screenText = wantsOCR ? await ocr?.value ?? "" : ""
+                let saved = try Output.deliver(png: png, note: text, screenText: screenText, textOnly: textOnly)
                 trace("card: delivered \(saved.path), text only=\(textOnly)")
             } catch {
                 failure = "Couldn't save: \(error.localizedDescription)"

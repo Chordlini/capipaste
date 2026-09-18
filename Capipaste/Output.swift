@@ -53,7 +53,7 @@ enum Output {
 
     /// Saves the PNG and puts image + note on the clipboard. Returns the saved file.
     @discardableResult
-    static func deliver(png: Data, note: String, textOnly: Bool = false) throws -> URL {
+    static func deliver(png: Data, note: String, screenText: String = "", textOnly: Bool = false) throws -> URL {
         let folder = AppModel.capturesFolder
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let stamp = Date().formatted(.verbatim("\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) at \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)).\(minute: .twoDigits).\(second: .twoDigits)", timeZone: .current, calendar: .current))
@@ -62,7 +62,9 @@ enum Output {
 
         // Text-only targets (terminals) still reach the image through the path.
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let text = (trimmed.isEmpty ? "" : trimmed + "\n\n") + "[screenshot: \(url.path)]"
+        var text = trimmed.isEmpty ? "" : trimmed + "\n\n"
+        if !screenText.isEmpty { text += "Text in the screenshot:\n```text\n\(screenText)\n```\n\n" }
+        text += "[screenshot: \(url.path)]"
 
         let item = NSPasteboardItem()
         if !textOnly {
