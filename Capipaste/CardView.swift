@@ -113,6 +113,16 @@ struct CardView: View {
             .clipShape(.rect(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.black.opacity(0.08)))
             .overlay(alignment: .topTrailing) { tools.padding(10) }
+            .overlay(alignment: .bottomLeading) {
+                if let clip = model.clip, model.index == 0 {
+                    Label("Clip · \(clip.seconds) s · first frame", systemImage: "film")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 9).frame(height: 24)
+                        .background(Color(white: 0.08, opacity: 0.8), in: .capsule)
+                        .padding(10)
+                }
+            }
             .overlay(alignment: .topLeading) {
                 if model.zoom > 1.01 {
                     Button(action: model.resetZoom) {

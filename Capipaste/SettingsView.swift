@@ -52,6 +52,7 @@ private struct GeneralSettings: View {
         Form {
             Section("Shortcuts") {
                 KeyboardShortcuts.Recorder("Capture a screenshot", name: .capture)
+                KeyboardShortcuts.Recorder("Record a clip", name: .clip)
                 KeyboardShortcuts.Recorder("Dictate (tap shortcut)", name: .dictate)
                 KeyboardShortcuts.Recorder("Paste last capture again", name: .pasteLast)
             }

@@ -114,7 +114,8 @@ enum Output {
 
     /// Saves the PNGs and puts image(s) + note on the clipboard. Returns the saved files.
     @discardableResult
-    static func deliver(pngs: [Data], note: String, context: String? = nil, screenTexts: [String] = [], textOnly: Bool = false) throws -> [URL] {
+    static func deliver(pngs: [Data], note: String, context: String? = nil, screenTexts: [String] = [],
+                        clip: Clip.Recording? = nil, textOnly: Bool = false) throws -> [URL] {
         let folder = AppModel.capturesFolder
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let stamp = Date().formatted(.verbatim("\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) at \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)).\(minute: .twoDigits).\(second: .twoDigits)", timeZone: .current, calendar: .current))
@@ -134,8 +135,28 @@ enum Output {
             text += "Text in the screenshot\(many ? " \(i + 1)" : ""):\n```text\n\(screen)\n```\n\n"
         }
         text += urls.enumerated().map { "[screenshot\(many ? " \($0.offset + 1)" : ""): \($0.element.path)]" }.joined(separator: "\n")
+        var movie: URL?
+        if let clip {
+            // The first frame is the (annotated) screenshot above; the rest show what happened next.
+            let saved = folder.appendingPathComponent("Capipaste \(stamp).mov")
+            try FileManager.default.moveItem(at: clip.movie, to: saved)
+            movie = saved
+            text += "\n[clip, \(clip.seconds) s: \(saved.path)]"
+            for (i, frame) in clip.frames.dropFirst().enumerated() {
+                guard let png = frame.cgImage(forProposedRect: nil, context: nil, hints: nil)
+                    .flatMap({ NSBitmapImageRep(cgImage: $0).representation(using: .png, properties: [:]) }) else { continue }
+                let url = folder.appendingPathComponent("Capipaste \(stamp) frame \(i + 2).png")
+                try png.write(to: url)
+                text += "\n[clip frame \(i + 2): \(url.path)]"
+            }
+        }
 
         copy(pngs: pngs, urls: urls, text: text, textOnly: textOnly)
+        if let movie, !textOnly {
+            let item = NSPasteboardItem()
+            item.setString(movie.absoluteString, forType: .fileURL)
+            NSPasteboard.general.writeObjects([item])
+        }
         History.save(text, besides: urls[0])
         return urls
     }

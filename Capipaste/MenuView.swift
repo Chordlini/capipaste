@@ -21,6 +21,14 @@ struct MenuView: View {
             }
             row {
                 dismiss()
+                app.recordClip()
+            } label: {
+                Text("Record clip")
+                Spacer()
+                Text(KeyboardShortcuts.getShortcut(for: .clip)?.description ?? "").foregroundStyle(.secondary)
+            }
+            row {
+                dismiss()
                 app.startDictation()
             } label: {
                 Text("Dictate")

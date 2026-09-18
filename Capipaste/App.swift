@@ -5,6 +5,7 @@ import SwiftUI
 extension KeyboardShortcuts.Name {
     static let capture = Self("capture", default: .init(.s, modifiers: [.command, .shift]))
     static let dictate = Self("dictate")  // optional shortcut; hold-to-talk is the main trigger
+    static let clip = Self("clip", default: .init(.s, modifiers: [.command, .control]))
     static let pasteLast = Self("pasteLast", default: .init(.v, modifiers: [.command, .control]))
 }
 
@@ -47,6 +48,7 @@ final class AppModel {
 
     private init() {
         KeyboardShortcuts.onKeyUp(for: .capture) { [weak self] in self?.capture() }
+        KeyboardShortcuts.onKeyUp(for: .clip) { [weak self] in self?.recordClip() }
         KeyboardShortcuts.onKeyUp(for: .pasteLast) { [weak self] in self?.pasteLast() }
         KeyboardShortcuts.onKeyDown(for: .dictate) { [weak self] in self?.startDictation() }
         KeyboardShortcuts.onKeyUp(for: .dictate) { [weak self] in self?.dictation?.finish() }
@@ -70,6 +72,7 @@ final class AppModel {
         showSettingsOnFirstRun()
         openDemoIfRequested()
         if CommandLine.arguments.contains("-autocapture") { capture() }
+        if CommandLine.arguments.contains("-autoclip") { recordClip() }
         transcribeFileIfRequested()
         menuShotIfRequested()
         dictateIfRequested()
@@ -124,6 +127,18 @@ final class AppModel {
         }
     }
 
+    /// Records a short clip of a region, then opens the card on its first frame.
+    func recordClip() {
+        let source = NSWorkspace.shared.frontmostApplication
+        guard card == nil else { card?.focus(); return }
+        if !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }
+        let context = Task { await CaptureContext.read(from: source) }
+        Task {
+            guard let clip = await Clip.record(), let first = clip.frames.first else { return }
+            await open(first, returnTo: source, context: await context.value, clip: clip)
+        }
+    }
+
     /// Copies the last capture again and pastes it where you are.
     func pasteLast() {
         guard let last = History.recent(1).first else { NSSound.beep(); return }
@@ -132,9 +147,10 @@ final class AppModel {
         Output.paste()
     }
 
-    private func open(_ image: NSImage, returnTo source: NSRunningApplication? = nil, context: CaptureContext? = nil) async {
+    private func open(_ image: NSImage, returnTo source: NSRunningApplication? = nil, context: CaptureContext? = nil,
+                      clip: Clip.Recording? = nil) async {
         trace("open: image \(image.size), mic status=\(AVCaptureDevice.authorizationStatus(for: .audio).rawValue)")
-        card = CaptureCard(image: image, mic: selectedMic, stt: stt, textOnly: Terminals.contains(source), context: context) { [weak self] in
+        card = CaptureCard(image: image, mic: selectedMic, stt: stt, textOnly: Terminals.contains(source), context: context, clip: clip) { [weak self] in
             self?.card = nil
             // Hand focus back so ⌘V lands where the capture started.
             source?.activate()
