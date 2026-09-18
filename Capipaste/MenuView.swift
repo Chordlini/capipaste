@@ -6,6 +6,7 @@ struct MenuView: View {
     @Environment(STT.self) private var stt
     @Environment(Permissions.self) private var permissions
     @Environment(\.dismiss) private var dismiss
+    @State private var recent: [History.Entry] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -16,7 +17,7 @@ struct MenuView: View {
             } label: {
                 Text("Capture")
                 Spacer()
-                Text("⌘⇧S").foregroundStyle(.secondary)
+                Text(KeyboardShortcuts.getShortcut(for: .capture)?.description ?? "").foregroundStyle(.secondary)
             }
             row {
                 dismiss()
@@ -28,6 +29,29 @@ struct MenuView: View {
                     .foregroundStyle(.secondary)
             }
             row { app.openCapturesFolder() } label: { Text("Open captures folder"); Spacer() }
+            if !recent.isEmpty {
+                divider
+                header("Recent · click to copy again")
+                ForEach(recent) { entry in
+                    row {
+                        dismiss()
+                        History.copy(entry, textOnly: false)
+                    } label: {
+                        Text(entry.title).lineLimit(1)
+                        Spacer()
+                        Text(entry.date, format: .relative(presentation: .named)).font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                }
+                row {
+                    dismiss()
+                    app.pasteLast()
+                } label: {
+                    Text("Paste last capture")
+                    Spacer()
+                    Text(KeyboardShortcuts.getShortcut(for: .pasteLast)?.description ?? "").foregroundStyle(.secondary)
+                }
+                divider
+            }
             row {
                 dismiss()
                 app.openSettings()
@@ -71,7 +95,7 @@ struct MenuView: View {
         .padding(5)
         .frame(width: 330)
         .fixedSize(horizontal: false, vertical: true)
-        .onAppear { app.refreshMics(); permissions.refresh() }
+        .onAppear { app.refreshMics(); permissions.refresh(); recent = History.recent(5) }
     }
 
     // MARK: Setup

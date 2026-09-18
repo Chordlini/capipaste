@@ -5,6 +5,7 @@ import SwiftUI
 extension KeyboardShortcuts.Name {
     static let capture = Self("capture", default: .init(.s, modifiers: [.command, .shift]))
     static let dictate = Self("dictate")  // optional shortcut; hold-to-talk is the main trigger
+    static let pasteLast = Self("pasteLast", default: .init(.v, modifiers: [.command, .control]))
 }
 
 @main
@@ -46,6 +47,7 @@ final class AppModel {
 
     private init() {
         KeyboardShortcuts.onKeyUp(for: .capture) { [weak self] in self?.capture() }
+        KeyboardShortcuts.onKeyUp(for: .pasteLast) { [weak self] in self?.pasteLast() }
         KeyboardShortcuts.onKeyDown(for: .dictate) { [weak self] in self?.startDictation() }
         KeyboardShortcuts.onKeyUp(for: .dictate) { [weak self] in self?.dictation?.finish() }
         refreshMics()
@@ -74,6 +76,12 @@ final class AppModel {
         settingsCheckIfRequested()
         updateCheckIfRequested()
         tidyIfRequested()
+        if CommandLine.arguments.contains("-recopy"), let last = History.recent(1).first {
+            // testing: put the last capture back on the clipboard and quit
+            History.copy(last, textOnly: false)
+            trace("history: recopied \(last.note.lastPathComponent), images=\(last.images.count), title=\(last.title)")
+            NSApp.terminate(nil)
+        }
     }
 
     func refreshMics() {
@@ -113,6 +121,14 @@ final class AppModel {
             try? FileManager.default.removeItem(at: url)
             await open(image, returnTo: source)
         }
+    }
+
+    /// Copies the last capture again and pastes it where you are.
+    func pasteLast() {
+        guard let last = History.recent(1).first else { NSSound.beep(); return }
+        History.copy(last, textOnly: Terminals.contains(NSWorkspace.shared.frontmostApplication))
+        trace("history: re-pasted \(last.note.lastPathComponent)")
+        Output.paste()
     }
 
     private func open(_ image: NSImage, returnTo source: NSRunningApplication? = nil) async {

@@ -134,7 +134,16 @@ enum Output {
         }
         text += urls.enumerated().map { "[screenshot\(many ? " \($0.offset + 1)" : ""): \($0.element.path)]" }.joined(separator: "\n")
 
-        // One pasteboard item per image; the note rides on the first.
+        copy(pngs: pngs, urls: urls, text: text, textOnly: textOnly)
+        History.save(text, besides: urls[0])
+        return urls
+    }
+}
+
+extension Output {
+    /// One pasteboard item per image; the note rides on the first.
+    static func copy(pngs: [Data], urls: [URL], text: String, textOnly: Bool) {
+        let many = pngs.count > 1
         let items = pngs.enumerated().map { i, png in
             let item = NSPasteboardItem()
             if !textOnly {
@@ -144,14 +153,12 @@ enum Output {
             }
             return item
         }
-        items[0].setString(text, forType: .string)
+        let first = items.first ?? NSPasteboardItem()
+        first.setString(text, forType: .string)
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects(textOnly ? [items[0]] : items)
-        return urls
+        NSPasteboard.general.writeObjects(textOnly || items.isEmpty ? [first] : items)
     }
-}
 
-extension Output {
     /// Dictation: text only, no image.
     static func deliver(text: String) {
         NSPasteboard.general.clearContents()

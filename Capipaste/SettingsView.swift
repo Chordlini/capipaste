@@ -52,6 +52,7 @@ private struct GeneralSettings: View {
             Section("Shortcuts") {
                 KeyboardShortcuts.Recorder("Capture a screenshot", name: .capture)
                 KeyboardShortcuts.Recorder("Dictate (tap shortcut)", name: .dictate)
+                KeyboardShortcuts.Recorder("Paste last capture again", name: .pasteLast)
             }
             Section("Hold to talk") {
                 Picker("Hold", selection: Binding(
