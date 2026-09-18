@@ -19,7 +19,8 @@ Capipaste is a small macOS menu-bar app for giving visual feedback to coding age
 - **Capture** — ⌘⇧S opens the native macOS region picker (Space switches to window capture, Esc cancels).
 - **Talk** — a card pops up with the screenshot and starts listening. Speech is transcribed **on your Mac**; nothing is uploaded.
 - **Mark it up** — draw on the screenshot, erase just the part under the eraser, undo per stroke. Pinch or ⌘+ / ⌘− to zoom, two-finger scroll to pan.
-- **Paste** — ↩ copies the annotated PNG and your note. The PNG is also saved to `~/Pictures/Capipaste`, and the note ends with its path:
+- **Never lose a take** — if the transcript fails or comes back empty while you were talking, it retries once, then keeps the card open and asks you to say it again. Typing takes over from dictation so speech never overwrites your edits.
+- **Paste** — ↩ copies the annotated PNG and your note, hands focus back to the app you captured from, and closes. The PNG is also saved to `~/Pictures/Capipaste`, and the note ends with its path:
 
   ```
   Make the header sticky and give the Upgrade button more room.
@@ -41,6 +42,14 @@ Capipaste is a small macOS menu-bar app for giving visual feedback to coding age
 After ↩ Capipaste hands focus back to the app you started from, so ⌘V lands there.
 
 If transcription fails or comes back empty while you were talking, Capipaste retries once. If that fails too, the card stays open and asks you to say it one more time.
+
+### Website
+
+A static landing page and FAQ live in [`site/`](site) — same e-ink system as the app's artwork, generated in the browser from the dither engine. Serve it with any static server:
+
+```sh
+cd site && python3 -m http.server 8766
+```
 
 ## Speech models
 

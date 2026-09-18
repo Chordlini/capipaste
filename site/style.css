@@ -100,9 +100,17 @@ kbd {
   vertical-align: .08em;
 }
 .corner-word {
-  position: absolute !important; left: var(--pad); bottom: 34px;
+  position: absolute; left: var(--pad); bottom: 34px;
+  display: flex; align-items: flex-end; gap: 4px;
   font-size: 30px; font-weight: 700; line-height: 1; letter-spacing: 0.015em;
 }
+/* the full stop is the recording light */
+.rec-dot {
+  width: .2em; height: .2em; margin-bottom: .05em; flex: none;
+  background: var(--mark);
+  animation: rec 1.6s ease-in-out infinite;
+}
+@keyframes rec { 0%, 100% { opacity: 1; } 50% { opacity: .18; } }
 .scroll-cue { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); display: grid; gap: 5px; }
 .scroll-cue i { width: 5px; height: 5px; background: var(--ink); animation: cue 1.6s infinite; }
 .scroll-cue i:nth-child(2) { animation-delay: .2s; }
