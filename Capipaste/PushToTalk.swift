@@ -39,17 +39,22 @@ final class PushToTalk {
             restart()
         }
     }
-    /// How long the key must be held before dictation starts (so ⌘C never triggers it).
-    static let holdDelay: Duration = .milliseconds(350)
+    /// Recording starts the instant the key goes down — waiting would clip your first word.
+    /// If another key or click arrives inside this window the take is thrown away, so ⌘C
+    /// and friends never leave a stray bar behind.
+    static let shortcutWindow: Duration = .milliseconds(400)
 
     private var monitors: [Any] = []
     private var holdTask: Task<Void, Never>?
     private var holding = false
+    private var armed = false
     private let onStart: () -> Void
+    private let onAbort: () -> Void
     private let onStop: () -> Void
 
-    init(onStart: @escaping () -> Void, onStop: @escaping () -> Void) {
+    init(onStart: @escaping () -> Void, onAbort: @escaping () -> Void, onStop: @escaping () -> Void) {
         self.onStart = onStart
+        self.onAbort = onAbort
         self.onStop = onStop
         trigger = Trigger(rawValue: UserDefaults.standard.string(forKey: "pushToTalk") ?? "") ?? .rightCommand
         restart()
@@ -59,7 +64,9 @@ final class PushToTalk {
         monitors.forEach(NSEvent.removeMonitor)
         monitors = []
         cancelHold()
-        guard trigger != .off, AXIsProcessTrusted() else { return }
+        let trusted = AXIsProcessTrusted()
+        trace("pushToTalk: arm trigger=\(trigger.rawValue) accessibility=\(trusted)")
+        guard trigger != .off, trusted else { return }
 
         let flags: NSEvent.EventTypeMask = [.flagsChanged]
         // Any other key or click while holding means the modifier is part of a shortcut, not speech.
@@ -83,26 +90,36 @@ final class PushToTalk {
         guard let code = trigger.keyCode else { return }
         let pressed = event.modifierFlags.contains(trigger.modifier)
         if event.keyCode == code, pressed {
-            guard !holding, holdTask == nil else { return }
+            guard !holding else { return }
+            holding = true
+            armed = false
+            onStart()
             holdTask = Task { [weak self] in
-                try? await Task.sleep(for: Self.holdDelay)
+                try? await Task.sleep(for: Self.shortcutWindow)
                 guard !Task.isCancelled, let self else { return }
-                holding = true
+                armed = true   // past the window: this is speech, not a shortcut
                 holdTask = nil
-                onStart()
             }
-        } else if !pressed {
-            cancelHold()
-            if holding {
-                holding = false
-                onStop()
-            }
+        } else if !pressed, holding {
+            let wasArmed = armed
+            holding = false
+            armed = false
+            holdTask?.cancel()
+            holdTask = nil
+            // a quick tap is just the modifier being tapped: throw the take away
+            wasArmed ? onStop() : onAbort()
         }
     }
 
+    /// Another key or a click: the modifier is part of a shortcut, so drop the take.
     private func cancelHold() {
         holdTask?.cancel()
         holdTask = nil
+        guard holding else { return }
+        holding = false
+        armed = false
+        trace("pushToTalk: shortcut detected, take dropped")
+        onAbort()
     }
 
     deinit {

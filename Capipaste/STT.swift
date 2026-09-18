@@ -189,8 +189,10 @@ final class STT {
         let model = inUse
         for attempt in 1...2 {
             do {
+                let began = Date()
                 let text = try await engine.transcribe(retry: attempt > 1)
-                trace("stt: \(model) attempt \(attempt) -> \(text.count) chars")
+                let ms = Int(Date().timeIntervalSince(began) * 1000)
+                trace("stt: \(model) attempt \(attempt) -> \(text.count) chars in \(ms) ms")
                 if !text.isEmpty || !expectSpeech {
                     await engine.cancel()
                     live = text

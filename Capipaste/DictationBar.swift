@@ -126,10 +126,10 @@ final class DictationModel {
             NSSound(named: "Pop")?.play()
             returnTo?.activate()
             if autoPaste {
-                try? await Task.sleep(for: .milliseconds(140))
+                try? await Task.sleep(for: .milliseconds(70))
                 Output.paste()
             }
-            try? await Task.sleep(for: .milliseconds(650))
+            try? await Task.sleep(for: .milliseconds(220))
             close()
         }
     }
@@ -178,10 +178,11 @@ struct DictationView: View {
         }
         .padding(.horizontal, 18)
         .frame(height: 64)
-        .background(.white.opacity(0.78), in: .capsule)
-        .background(.ultraThinMaterial, in: .capsule)
-        .overlay(Capsule().strokeBorder(.primary.opacity(0.12)))
-        .shadow(color: .black.opacity(0.28), radius: 24, y: 10)
+        .background(.white.opacity(0.92), in: .capsule)
+        .overlay(Capsule().strokeBorder(.primary.opacity(0.10)))
+        // two soft passes hug the pill instead of boxing it in
+        .shadow(color: .black.opacity(0.13), radius: 18, y: 8)
+        .shadow(color: .black.opacity(0.07), radius: 4, y: 1)
         .environment(\.colorScheme, .light)
     }
 

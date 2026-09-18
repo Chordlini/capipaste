@@ -48,9 +48,19 @@ final class AppModel {
         KeyboardShortcuts.onKeyDown(for: .dictate) { [weak self] in self?.startDictation() }
         KeyboardShortcuts.onKeyUp(for: .dictate) { [weak self] in self?.dictation?.finish() }
         refreshMics()
+        permissions.onAccessibilityGranted = { [weak self] in
+            trace("permissions: accessibility granted, arming hold-to-talk")
+            self?.pushToTalk?.restart()
+        }
         permissions.refresh()
+        watchForAccessibility()
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.permissions.refresh() }
+        }
         pushToTalk = PushToTalk(
             onStart: { [weak self] in self?.startDictation() },
+            onAbort: { [weak self] in self?.dictation?.cancel() },
             onStop: { [weak self] in self?.dictation?.finish() })
         Task { await stt.warmUp() }
         if updater.checkOnLaunch { Task { await updater.check() } }
@@ -208,6 +218,23 @@ final class AppModel {
                                  autoPaste: permissions.canDictateHandsFree) { [weak self] in
             self?.dictation = nil
         }
+    }
+
+    /// macOS doesn't tell us when Accessibility is granted, so glance at it until it is.
+    private func watchForAccessibility() {
+        guard permissions.accessibility != .granted else { return }
+        Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
+            Task { @MainActor in
+                guard let self else { return timer.invalidate() }
+                self.permissions.refresh()
+                if self.permissions.accessibility == .granted { timer.invalidate() }
+            }
+        }
+    }
+
+    /// Called after the permission list is refreshed: pick up a freshly granted Accessibility.
+    func permissionsChanged() {
+        pushToTalk?.restart()
     }
 
     func openSettings() {

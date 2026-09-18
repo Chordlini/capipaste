@@ -21,6 +21,8 @@ final class Permissions {
     private(set) var accessibility: State = .notAsked
     /// Screen Recording only takes effect after a relaunch, so remember we asked.
     private(set) var screenNeedsRestart = false
+    /// Set by AppModel so the hold-to-talk watcher can arm itself the moment this is granted.
+    var onAccessibilityGranted: (() -> Void)?
 
     /// `-setupdemo` pretends nothing is granted yet, to check the setup steps.
     let demo = CommandLine.arguments.contains("-setupdemo")
@@ -44,7 +46,9 @@ final class Permissions {
 
     func refresh() {
         if demo { screen = .notAsked; mic = .denied; accessibility = .notAsked; return }
+        let wasTrusted = accessibility == .granted
         accessibility = AXIsProcessTrusted() ? .granted : .notAsked
+        if accessibility == .granted, !wasTrusted { onAccessibilityGranted?() }
         let hadScreen = screen == .granted
         screen = CGPreflightScreenCaptureAccess() ? .granted : .notAsked
         if screen == .granted, !hadScreen { screenNeedsRestart = false }
