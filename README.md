@@ -50,7 +50,7 @@ If transcription fails or comes back empty while you were talking, Capipaste ret
 Capipaste checks GitHub releases and can install them itself if you turn that on in Settings (an automatic install only accepts a build signed with the same identity). Cut one with:
 
 ```sh
-scripts/release.sh 0.2.0 "What changed"
+scripts/release.sh 0.2.0 "What changed"   # builds, then uploads Capipaste.dmg + Capipaste.app.zip
 ```
 
 ### Website
@@ -85,7 +85,23 @@ Typing in the note stops listening, so dictation never overwrites your edits.
 
 ## Install
 
-Requirements: Apple Silicon Mac, macOS 26, Xcode 27, [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+Requires an Apple Silicon Mac on macOS 26.
+
+**Download** — grab [**Capipaste.dmg**](https://github.com/Chordlini/capipaste/releases/latest/download/Capipaste.dmg), open it and drag Capipaste into Applications.
+
+This build isn't notarized yet, so the first launch is blocked: open **System Settings › Privacy & Security**, scroll down and click **Open Anyway**. You only do this once.
+
+**Or in one line** — skips the Gatekeeper step and launches the app:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Chordlini/capipaste/main/scripts/get.sh | sh
+```
+
+On first launch Capipaste opens Settings and walks you through **Microphone**, **Screen Recording** and (for hold-to-talk) **Accessibility**.
+
+### Build from source
+
+Needs Xcode 27 and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
 git clone https://github.com/Chordlini/capipaste.git
@@ -93,9 +109,7 @@ cd capipaste
 ./scripts/install.sh      # builds Release and installs /Applications/Capipaste.app
 ```
 
-`project.yml` signs with an Apple Development identity so macOS keeps the Microphone and Screen Recording permissions across rebuilds — change `DEVELOPMENT_TEAM` to your own team ID.
-
-On first use macOS asks for **Microphone** and **Screen Recording** access (System Settings › Privacy & Security).
+`project.yml` signs with an Apple Development identity so macOS keeps permissions across rebuilds — change `DEVELOPMENT_TEAM` to your own team ID.
 
 ## Project layout
 
@@ -114,7 +128,10 @@ brand/
   assets/            generated brand assets
 design/
   mockup.html        app UI reference
-scripts/install.sh
+scripts/
+  install.sh         build + install locally
+  release.sh         build, DMG + zip, GitHub release
+  get.sh             one-line installer from the latest release
 ```
 
 ### Test hooks

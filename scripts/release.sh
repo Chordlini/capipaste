@@ -17,9 +17,18 @@ ZIP="build/Capipaste.app.zip"
 rm -f "$ZIP"
 /usr/bin/ditto -c -k --keepParent "$APP" "$ZIP"
 
+# drag-to-Applications disk image
+DMG="build/Capipaste.dmg"
+STAGE="build/dmg"
+rm -rf "$STAGE" "$DMG"
+mkdir -p "$STAGE"
+/usr/bin/ditto "$APP" "$STAGE/Capipaste.app"
+ln -s /Applications "$STAGE/Applications"
+hdiutil create -volname "Capipaste" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$DMG" >/dev/null
+
 git add -A
 git commit -m "Release $VERSION" || true
 git tag "v$VERSION" -f
 git push --follow-tags
-gh release create "v$VERSION" "$ZIP" --title "Capipaste $VERSION" --notes "$NOTES"
+gh release create "v$VERSION" "$DMG" "$ZIP" --title "Capipaste $VERSION" --notes "$NOTES"
 echo "released v$VERSION"
