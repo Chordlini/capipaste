@@ -99,7 +99,7 @@ The same look, drawn in the browser:
 - `ditherInto(canvas, paint, { cell, color, threshold })` — paints greyscale at low resolution, then prints dots. Pass `threshold` for solid artwork (headlines, wordmarks) and leave it out for shaded artwork (icons, bubbles).
 - `drawTitles()` — section headings: the real text stays in the page (transparent) so layout, wrapping, selection and screen readers keep working; the dots are drawn over it. Redrawn on resize and zoom.
 - `drawLogos()` — draws the mark from the dot map with every dot snapped to whole device pixels, and redraws when the zoom changes. This is why the logo never breaks at odd zoom levels.
-- Bubbles in the closing section, and the e-ink "refresh" flash on the hero, use the same dither.
+- Bubbles in the closing section use the same dither.
 
 **Sizing dots**: about one dot per 15–21 px of cap height. Fewer dots per letter looks broken; more looks like grey noise.
 
@@ -120,8 +120,8 @@ The interface language is a Mac keyboard.
 
 One idea per moment, and everything stops for `prefers-reduced-motion`.
 
-- **Hero**: e-ink refresh on load (ink flash → paper flash → dots settle), then a slow float, and a drift up on scroll.
-- **Headings**: print in through a dither mask as they enter view.
+- **Hero**: a slow float, and a drift up on scroll.
+- **Headings**: dot in as they enter view and scatter out as they leave, every pass. The footer wordmark and nav stay solid.
 - **Demo**: driven by scroll position, never on a timer.
 - **Bubbles**: slow rise with a slight sway, fading out toward the top.
 - Nothing bounces, nothing slides in from the side, no fade-up on every section.
