@@ -54,6 +54,9 @@ struct CardView: View {
         case .escape: model.cancel(); return .handled
         case KeyEquivalent("d"): model.tool = .draw; return .handled
         case KeyEquivalent("e"): model.tool = .erase; return .handled
+        case KeyEquivalent("a"): model.tool = .arrow; return .handled
+        case KeyEquivalent("b"): model.tool = .box; return .handled
+        case KeyEquivalent("x"): model.tool = .blur; return .handled
         default: return .ignored
         }
     }
@@ -70,8 +73,23 @@ struct CardView: View {
                 Canvas { ctx, _ in
                     let style = StrokeStyle(lineWidth: Stroke.width * model.zoom, lineCap: .round, lineJoin: .round)
                     let transform = model.toView
-                    for stroke in model.strokes + [model.current].compactMap({ $0 }) {
-                        ctx.stroke(Path(stroke.path(transform)), with: .color(.ink), style: style)
+                    let all = model.strokes + [model.current].compactMap({ $0 })
+                    // Blur boxes show the mosaic through them, under the annotations.
+                    if let mosaic = model.mosaic {
+                        let frame = CGRect(x: model.offset.x, y: model.offset.y,
+                                           width: model.shotSize.width * model.zoom, height: model.shotSize.height * model.zoom)
+                        for blur in all where blur.kind == .blur {
+                            ctx.drawLayer { layer in
+                                layer.clip(to: Path(blur.path(transform)))
+                                layer.draw(Image(nsImage: mosaic).interpolation(.none), in: frame)
+                            }
+                        }
+                    }
+                    for stroke in all where stroke.kind != .blur {
+                        ctx.stroke(Path(stroke.path(transform, lineWidth: Stroke.width / model.fitScale)), with: .color(.ink), style: style)
+                    }
+                    if let blur = model.current, blur.kind == .blur {
+                        ctx.stroke(Path(blur.path(transform)), with: .color(.white.opacity(0.9)), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                     }
                     if let p = eraserAt, model.tool == .erase {
                         let ring = Path(ellipseIn: CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20))
@@ -113,6 +131,9 @@ struct CardView: View {
     private var tools: some View {
         HStack(spacing: 2) {
             toolButton("pencil.tip", "Draw (D)", on: model.tool == .draw, fill: .ink, glyph: .white) { model.tool = .draw }
+            toolButton("arrow.up.right", "Arrow (A)", on: model.tool == .arrow, fill: .ink, glyph: .white) { model.tool = .arrow }
+            toolButton("rectangle", "Box (B)", on: model.tool == .box, fill: .ink, glyph: .white) { model.tool = .box }
+            toolButton("checkerboard.rectangle", "Blur (X)", on: model.tool == .blur, fill: .white, glyph: .black) { model.tool = .blur }
             toolButton("eraser", "Erase (E)", on: model.tool == .erase, fill: .white, glyph: .black) { model.tool = .erase }
             toolButton("arrow.uturn.backward", "Undo (⌘Z)", on: false, fill: .clear, glyph: .white, action: model.undo)
                 .opacity(model.canUndo ? 1 : 0.4)

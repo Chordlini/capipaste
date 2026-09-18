@@ -91,6 +91,18 @@ final class CaptureCard {
             let c = model.strokes.last?.points.first ?? .zero
             trace("card: zoom=\(model.zoom) offset=\(model.offset) circle starts at image \(c), image size \(model.image.size)")
             model.resetZoom()
+            // Shapes: arrow, box and blur each add one; a box erased at its edge goes away.
+            for (tool, from, to) in [(Tool.arrow, CGPoint(x: 30, y: 150), CGPoint(x: 150, y: 110)),
+                                     (.box, CGPoint(x: 200, y: 20), CGPoint(x: 330, y: 90)),
+                                     (.blur, CGPoint(x: 20, y: 60), CGPoint(x: 260, y: 100))] {
+                model.tool = tool
+                model.drag(to: from); model.drag(to: to); model.endDrag()
+            }
+            let shapes = model.strokes.count
+            model.tool = .erase
+            model.drag(to: CGPoint(x: 200, y: 50)); model.endDrag()
+            trace("card: shapes added=\(shapes) after erasing box=\(model.strokes.count) (want one less)")
+            model.undo()
             // `-note <text>`: type the note instead of speaking it
             let args = CommandLine.arguments
             if let i = args.firstIndex(of: "-note"), i + 1 < args.count {
@@ -112,7 +124,18 @@ final class KeyPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
-enum Tool { case draw, erase }
+enum Tool {
+    case draw, arrow, box, blur, erase
+
+    var shape: Stroke.Kind? {
+        switch self {
+        case .arrow: .arrow
+        case .box: .box
+        case .blur: .blur
+        case .draw, .erase: nil
+        }
+    }
+}
 
 @MainActor @Observable
 final class CardModel {
@@ -149,6 +172,9 @@ final class CardModel {
     var strokes: [Stroke] = []
     var current: Stroke?
     private var history: [[Stroke]] = []
+    /// The capture as a mosaic, shown through blur boxes.
+    @ObservationIgnored lazy var mosaic: NSImage? = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        .flatMap(Output.pixelated).map { NSImage(cgImage: $0, size: image.size) }
     /// Text read off the capture, started as soon as the card opens.
     private var ocr: Task<String, Never>?
 
@@ -404,7 +430,15 @@ final class CardModel {
             gestureStarted = true
             history.append(strokes)
         }
+        if let shape = tool.shape {
+            // Shapes stretch from where the drag started to where it is now.
+            if current == nil { current = Stroke(kind: shape, points: [point, point]) }
+            current?.points[1] = point
+            return
+        }
         switch tool {
+        case .arrow, .box, .blur:
+            break
         case .draw:
             if current == nil { current = Stroke(points: []) }
             // Fill gaps from fast drags so the eraser can cut anywhere along the line.
@@ -418,7 +452,9 @@ final class CardModel {
             current?.points.append(point)
         case .erase:
             // Cut out only the points under the eraser, splitting strokes into the pieces that remain.
+            let radius = Self.eraserRadius / pointsPerImagePoint
             strokes = strokes.flatMap { stroke -> [Stroke] in
+                guard stroke.kind == .pen else { return stroke.touches(point, radius: radius) ? [] : [stroke] }
                 var pieces: [Stroke] = []
                 var run: [CGPoint] = []
                 for p in stroke.points {
@@ -436,9 +472,15 @@ final class CardModel {
 
     func endDrag() {
         gestureStarted = false
-        if let stroke = current { strokes.append(stroke) }
+        // A click with a shape tool draws nothing.
+        if let stroke = current, stroke.kind == .pen || stroke.rect.width + stroke.rect.height > 6 / pointsPerImagePoint {
+            strokes.append(stroke)
+        } else if current != nil {
+            history.removeLast()
+        }
         current = nil
-        if tool == .erase, history.last?.flatMap(\.points).count == strokes.flatMap(\.points).count {
+        if tool == .erase, history.last?.flatMap(\.points).count == strokes.flatMap(\.points).count,
+           history.last?.count == strokes.count {
             history.removeLast() // eraser touched nothing
         }
     }
