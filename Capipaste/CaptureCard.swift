@@ -59,17 +59,33 @@ final class CaptureCard {
         trace("card: panel frame=\(panel.frame), visible=\(panel.isVisible), key=\(panel.isKeyWindow)")
         model.startListening()
         trace("card: listening=\(model.recording), failure=\(model.failure ?? "none")")
-        snapshotIfRequested(hosting)
+        snapshotIfRequested(hosting, model)
         autosubmitIfRequested(model)
     }
 
     /// `-snapshot <png>` writes the rendered card after 3 s (visual checks without Screen Recording).
-    private func snapshotIfRequested(_ view: NSView) {
+    private func snapshotIfRequested(_ view: NSView, _ model: CardModel) {
         let args = CommandLine.arguments
         guard let i = args.firstIndex(of: "-snapshot"), i + 1 < args.count else { return }
         let path = args[i + 1]
         Task {
             try? await Task.sleep(for: .seconds(3))
+            // `-shownote <text> -circle x,y,w,h` (fractions of the shot): a staged card for the website
+            if let n = args.firstIndex(of: "-shownote"), n + 1 < args.count { model.liveChanged(args[n + 1]) } // as if spoken: mic keeps going
+            if let c = args.firstIndex(of: "-circle"), c + 1 < args.count {
+                let f = args[c + 1].split(separator: ",").compactMap { Double($0) }.map { CGFloat($0) }
+                if f.count == 4 {
+                    let size = model.shotSize
+                    let centre = CGPoint(x: (f[0] + f[2] / 2) * size.width, y: (f[1] + f[3] / 2) * size.height)
+                    for a in stride(from: -0.3, through: 2 * .pi + 0.5, by: 0.08) {
+                        let wobble = 1 + 0.04 * sin(a * 3)
+                        model.drag(to: CGPoint(x: centre.x + f[2] * size.width / 2 * cos(a) * wobble,
+                                               y: centre.y + f[3] * size.height / 2 * sin(a) * wobble))
+                    }
+                    model.endDrag()
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(400))
             guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
             view.cacheDisplay(in: view.bounds, to: rep)
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
