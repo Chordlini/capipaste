@@ -67,6 +67,9 @@ struct Stroke {
 }
 
 enum Output {
+    /// Menu bar › Paste includes › Image. Off: only the words (and whatever else is on) get pasted.
+    static var includesImage: Bool { UserDefaults.standard.object(forKey: "pasteImage") as? Bool ?? true }
+
     /// Flattens the strokes (image points, `lineWidth` in image points) onto the full-resolution capture.
     static func render(_ image: NSImage, strokes: [Stroke], lineWidth: CGFloat) -> Data? {
         guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
@@ -136,7 +139,9 @@ enum Output {
         for (i, screen) in screenTexts.enumerated() where !screen.isEmpty {
             text += "Text in the screenshot\(many ? " \(i + 1)" : ""):\n```text\n\(screen)\n```\n\n"
         }
-        text += urls.enumerated().map { "[screenshot\(many ? " \($0.offset + 1)" : ""): \($0.element.path)]" }.joined(separator: "\n")
+        let image = includesImage
+        if image { text += urls.enumerated().map { "[screenshot\(many ? " \($0.offset + 1)" : ""): \($0.element.path)]" }.joined(separator: "\n") }
+        text = text.trimmingCharacters(in: .newlines)
         var movie: URL?
         if let clip {
             // The first frame is the (annotated) screenshot above; the rest show what happened next.
@@ -158,8 +163,8 @@ enum Output {
             }
         }
 
-        copy(pngs: pngs, urls: urls, text: text, textOnly: textOnly)
-        if let movie, !textOnly {
+        copy(pngs: pngs, urls: urls, text: text, textOnly: textOnly || !image)
+        if let movie, !textOnly, image {
             let item = NSPasteboardItem()
             item.setString(movie.absoluteString, forType: .fileURL)
             NSPasteboard.general.writeObjects([item])

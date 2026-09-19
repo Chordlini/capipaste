@@ -7,6 +7,9 @@ struct MenuView: View {
     @Environment(Permissions.self) private var permissions
     @Environment(\.dismiss) private var dismiss
     @State private var recent: [History.Entry] = []
+    @AppStorage("pasteImage") private var pasteImage = true
+    @AppStorage("context") private var context = true
+    @AppStorage("ocrMode") private var ocrMode: OCR.Mode = .terminals
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -68,6 +71,12 @@ struct MenuView: View {
                 Spacer()
                 Text("⌘,").foregroundStyle(.secondary)
             }
+
+            divider
+            header("Paste includes · your words always")
+            toggle("Image", $pasteImage)
+            toggle("Context (app, window, URL)", $context)
+            toggle("Screen text", Binding(get: { ocrMode != .never }, set: { ocrMode = $0 ? .terminals : .never }))
 
             divider
             header("Microphone")
@@ -210,6 +219,14 @@ struct MenuView: View {
 
     private func row(action: @escaping () -> Void, @ViewBuilder label: () -> some View) -> some View {
         MenuRow(action: action) { HStack(spacing: 8) { label() }.padding(.horizontal, 9).padding(.vertical, 4) }
+    }
+
+    private func toggle(_ title: String, _ on: Binding<Bool>) -> some View {
+        row { on.wrappedValue.toggle() } label: {
+            check(on.wrappedValue)
+            Text(title)
+            Spacer()
+        }
     }
 
     private func check(_ on: Bool) -> some View {
