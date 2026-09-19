@@ -71,15 +71,15 @@ final class AppModel {
         if updater.checkOnLaunch { Task { await updater.check() } }
         showSettingsOnFirstRun()
         openDemoIfRequested()
-        if CommandLine.arguments.contains("-autocapture") { capture() }
-        if CommandLine.arguments.contains("-autoclip") { recordClip() }
+        if hookArguments.contains("-autocapture") { capture() }
+        if hookArguments.contains("-autoclip") { recordClip() }
         transcribeFileIfRequested()
         menuShotIfRequested()
         dictateIfRequested()
         settingsCheckIfRequested()
         updateCheckIfRequested()
         tidyIfRequested()
-        if CommandLine.arguments.contains("-recopy"), let last = History.recent(1).first {
+        if hookArguments.contains("-recopy"), let last = History.recent(1).first {
             // testing: put the last capture back on the clipboard and quit
             History.copy(last, textOnly: false)
             trace("history: recopied \(last.note.lastPathComponent), images=\(last.images.count), title=\(last.title)")
@@ -160,7 +160,7 @@ final class AppModel {
 
     /// `-demo <png>` opens the card on an existing image (testing, README shots).
     private func openDemoIfRequested() {
-        let args = CommandLine.arguments
+        let args = hookArguments
         guard let i = args.firstIndex(of: "-demo"), i + 1 < args.count,
               let image = NSImage(contentsOfFile: args[i + 1]) else { return }
         Task { await open(image) }
@@ -168,7 +168,7 @@ final class AppModel {
 
     /// `-tidy <note>` rewrites one note, logs it and quits (testing). Add `-tidydownload` to fetch the local model first.
     private func tidyIfRequested() {
-        let args = CommandLine.arguments
+        let args = hookArguments
         guard let i = args.firstIndex(of: "-tidy"), i + 1 < args.count else { return }
         Task {
             if args.contains("-tidydownload"), !tidy.localReady {
@@ -186,7 +186,7 @@ final class AppModel {
 
     /// `-updatecheck` runs one update check and logs the outcome (testing).
     private func updateCheckIfRequested() {
-        guard CommandLine.arguments.contains("-updatecheck") else { return }
+        guard hookArguments.contains("-updatecheck") else { return }
         Task {
             await updater.check()
             trace("updater: status=\(updater.status) current=\(updater.currentVersion) latest=\(updater.release?.version ?? "none")")
@@ -196,7 +196,7 @@ final class AppModel {
 
     /// `-settingscheck` opens Settings and logs the window it made (testing).
     private func settingsCheckIfRequested() {
-        guard CommandLine.arguments.contains("-settingscheck") else { return }
+        guard hookArguments.contains("-settingscheck") else { return }
         Task {
             try? await Task.sleep(for: .milliseconds(800))
             openSettings()
@@ -209,7 +209,7 @@ final class AppModel {
 
     /// `-dictate <seconds>` runs one hold-to-talk take without the key (testing).
     private func dictateIfRequested() {
-        let args = CommandLine.arguments
+        let args = hookArguments
         guard let i = args.firstIndex(of: "-dictate"), i + 1 < args.count,
               let seconds = Double(args[i + 1]) else { return }
         Task {
@@ -222,7 +222,7 @@ final class AppModel {
 
     /// `-menushot <png>` renders the menu-bar panel to a file (testing).
     private func menuShotIfRequested() {
-        let args = CommandLine.arguments
+        let args = hookArguments
         guard let i = args.firstIndex(of: "-menushot") ?? args.firstIndex(of: "-settingsshot"),
               i + 1 < args.count else { return }
         let settings = args.contains("-settingsshot")
@@ -244,7 +244,7 @@ final class AppModel {
 
     /// `-sttfile <audio>` runs the active speech model over a file and logs the result (testing).
     private func transcribeFileIfRequested() {
-        let args = CommandLine.arguments
+        let args = hookArguments
         guard let i = args.firstIndex(of: "-sttfile"), i + 1 < args.count else { return }
         Task {
             do {
@@ -336,7 +336,7 @@ enum Capture {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         // `-autocapture x,y,w,h` grabs a fixed rect instead of the interactive picker (testing).
-        let args = CommandLine.arguments
+        let args = hookArguments
         if let i = args.firstIndex(of: "-autocapture"), i + 1 < args.count {
             process.arguments = ["-x", "-R", args[i + 1], url.path]
         } else {
@@ -405,4 +405,15 @@ enum Terminals {
     static func contains(_ app: NSRunningApplication?) -> Bool {
         app?.bundleIdentifier.map(bundleIDs.contains) ?? false
     }
+}
+
+/// Launch arguments that drive the test hooks (`-autocapture`, `-dictate`, …). Empty unless built with
+/// TESTHOOKS (`scripts/install.sh hooks`): a released app holds Screen Recording, Microphone and
+/// Accessibility, and must not be steerable by whoever launches it.
+var hookArguments: [String] {
+    #if TESTHOOKS
+    CommandLine.arguments
+    #else
+    []
+    #endif
 }

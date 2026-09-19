@@ -18,8 +18,19 @@ struct CaptureContext {
         guard enabled, let app, let name = app.localizedName else { return nil }
         var context = CaptureContext(app: name)
         context.window = focusedWindowTitle(of: app)
-        if let script = urlScript(for: app.bundleIdentifier) { context.url = await run(script) }
+        if let script = urlScript(for: app.bundleIdentifier) { context.url = await run(script).map(scrubbed) }
         return context
+    }
+
+    /// Long query values and fragments are usually tokens (magic links, OAuth codes, signed URLs):
+    /// they'd be pasted into a chat and saved in history, so they're cut. `?tab=2` stays.
+    static func scrubbed(_ url: String) -> String {
+        guard var parts = URLComponents(string: url) else { return url }
+        parts.user = nil
+        parts.password = nil
+        parts.queryItems = parts.queryItems?.map { URLQueryItem(name: $0.name, value: ($0.value?.count ?? 0) > 20 ? "…" : $0.value) }
+        if (parts.fragment?.count ?? 0) > 20 { parts.fragment = "…" }
+        return parts.string.map { $0.removingPercentEncoding ?? $0 } ?? url
     }
 
     /// Needs Accessibility (already asked for hold-to-talk); nil without it.

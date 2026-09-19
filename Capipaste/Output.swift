@@ -107,7 +107,9 @@ enum Output {
     /// The whole capture as a coarse mosaic; blur boxes show this through their clip.
     static func pixelated(_ cg: CGImage) -> CGImage? {
         let image = CIImage(cgImage: cg)
-        let block = max(8, Double(cg.width) / 70) // ponytail: ~70 blocks across, unreadable at any capture size
+        // ponytail: ~70 blocks across; the 24 px floor keeps small captures from leaving a few blocks per letter,
+        // which pixelation-reversing tools can read. Solid redaction if this ever has to resist a determined attacker.
+        let block = max(24, Double(cg.width) / 70)
         let mosaic = image.clampedToExtent().applyingFilter("CIPixellate", parameters: ["inputScale": block]).cropped(to: image.extent)
         return CIContext().createCGImage(mosaic, from: image.extent)
     }
@@ -115,7 +117,7 @@ enum Output {
     /// Saves the PNGs and puts image(s) + note on the clipboard. Returns the saved files.
     @discardableResult
     static func deliver(pngs: [Data], note: String, context: String? = nil, screenTexts: [String] = [],
-                        clip: Clip.Recording? = nil, textOnly: Bool = false) throws -> [URL] {
+                        clip: Clip.Recording? = nil, clipBlurs: [Stroke] = [], textOnly: Bool = false) throws -> [URL] {
         let folder = AppModel.capturesFolder
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let stamp = Date().formatted(.verbatim("\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) at \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)).\(minute: .twoDigits).\(second: .twoDigits)", timeZone: .current, calendar: .current))
@@ -138,13 +140,18 @@ enum Output {
         var movie: URL?
         if let clip {
             // The first frame is the (annotated) screenshot above; the rest show what happened next.
-            let saved = folder.appendingPathComponent("Capipaste \(stamp).mov")
-            try FileManager.default.moveItem(at: clip.movie, to: saved)
-            movie = saved
-            text += "\n[clip, \(clip.seconds) s: \(saved.path)]"
+            if clipBlurs.isEmpty {
+                let saved = folder.appendingPathComponent("Capipaste \(stamp).mov")
+                try FileManager.default.moveItem(at: clip.movie, to: saved)
+                movie = saved
+                text += "\n[clip, \(clip.seconds) s: \(saved.path)]"
+            } else {
+                // ponytail: the video can't be blurred here, so it isn't kept; re-encode it blurred if that's missed
+                try? FileManager.default.removeItem(at: clip.movie)
+                text += "\n[clip, \(clip.seconds) s: video not kept, part of it is blurred; key frames follow]"
+            }
             for (i, frame) in clip.frames.dropFirst().enumerated() {
-                guard let png = frame.cgImage(forProposedRect: nil, context: nil, hints: nil)
-                    .flatMap({ NSBitmapImageRep(cgImage: $0).representation(using: .png, properties: [:]) }) else { continue }
+                guard let png = render(frame, strokes: clipBlurs, lineWidth: 0) else { continue }
                 let url = folder.appendingPathComponent("Capipaste \(stamp) frame \(i + 2).png")
                 try png.write(to: url)
                 text += "\n[clip frame \(i + 2): \(url.path)]"

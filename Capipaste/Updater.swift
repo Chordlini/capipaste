@@ -98,18 +98,27 @@ final class Updater {
         }
     }
 
-    /// Both copies must carry the same signing identity.
+    /// The download must be intact and signed, under Apple's root, by the team that signed this copy.
+    /// (A certificate's name alone proves nothing: anyone can make one that says anything.)
     private func sameSigner(as candidate: URL) throws -> Bool {
-        func authority(_ url: URL) -> String? {
-            var code: SecStaticCode?
-            guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess, let code else { return nil }
-            var info: CFDictionary?
-            guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
-                  let dictionary = info as? [String: Any] else { return nil }
-            let chain = dictionary[kSecCodeInfoCertificates as String] as? [SecCertificate]
-            return chain?.first.flatMap { SecCertificateCopySubjectSummary($0) as String? }
-        }
-        return authority(candidate) != nil && authority(candidate) == authority(Bundle.main.bundleURL)
+        var mine: SecStaticCode?
+        var info: CFDictionary?
+        guard SecStaticCodeCreateWithPath(Bundle.main.bundleURL as CFURL, [], &mine) == errSecSuccess, let mine,
+              SecCodeCopySigningInformation(mine, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let team = (info as? [String: Any])?[kSecCodeInfoTeamIdentifier as String] as? String,
+              !team.isEmpty, team.allSatisfy({ $0.isLetter || $0.isNumber }) else { return false }
+        return Self.isValid(candidate, team: team)
+    }
+
+    nonisolated static func isValid(_ app: URL, team: String) -> Bool {
+        var code: SecStaticCode?
+        var requirement: SecRequirement?
+        let rule = "anchor apple generic and certificate leaf[subject.OU] = \"\(team)\""
+        guard SecStaticCodeCreateWithPath(app as CFURL, [], &code) == errSecSuccess, let code,
+              SecRequirementCreateWithString(rule as CFString, [], &requirement) == errSecSuccess, let requirement
+        else { return false }
+        let flags = SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate)
+        return SecStaticCodeCheckValidity(code, flags, requirement) == errSecSuccess
     }
 
     private func isNewer(_ candidate: String, than current: String) -> Bool {

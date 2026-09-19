@@ -45,6 +45,8 @@ final class PushToTalk {
     static let shortcutWindow: Duration = .milliseconds(400)
 
     private var monitors: [Any] = []
+    /// Watches other keys and clicks, only while the trigger is held.
+    private var interruptMonitor: Any?
     private var holdTask: Task<Void, Never>?
     private var holding = false
     private var armed = false
@@ -69,16 +71,10 @@ final class PushToTalk {
         guard trigger != .off, trusted else { return }
 
         let flags: NSEvent.EventTypeMask = [.flagsChanged]
-        // Any other key or click while holding means the modifier is part of a shortcut, not speech.
-        let interrupts: NSEvent.EventTypeMask = [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]
 
         if let global = NSEvent.addGlobalMonitorForEvents(matching: flags, handler: { [weak self] event in
             Task { @MainActor in self?.handle(event) }
         }) { monitors.append(global) }
-
-        if let globalInterrupt = NSEvent.addGlobalMonitorForEvents(matching: interrupts, handler: { [weak self] _ in
-            Task { @MainActor in self?.cancelHold() }
-        }) { monitors.append(globalInterrupt) }
 
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: flags) { [weak self] event in
             self?.handle(event)
@@ -93,6 +89,12 @@ final class PushToTalk {
             guard !holding else { return }
             holding = true
             armed = false
+            // Any other key or click while holding means the modifier is part of a shortcut, not speech.
+            // Installed per hold, so the rest of the day's typing never reaches this app.
+            interruptMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] _ in
+                Task { @MainActor in self?.cancelHold() }
+            }
             onStart()
             holdTask = Task { [weak self] in
                 try? await Task.sleep(for: Self.shortcutWindow)
@@ -101,6 +103,7 @@ final class PushToTalk {
                 holdTask = nil
             }
         } else if !pressed, holding {
+            stopWatchingInterrupts()
             let wasArmed = armed
             holding = false
             armed = false
@@ -113,6 +116,7 @@ final class PushToTalk {
 
     /// Another key or a click: the modifier is part of a shortcut, so drop the take.
     private func cancelHold() {
+        stopWatchingInterrupts()
         holdTask?.cancel()
         holdTask = nil
         guard holding else { return }
@@ -120,6 +124,11 @@ final class PushToTalk {
         armed = false
         trace("pushToTalk: shortcut detected, take dropped")
         onAbort()
+    }
+
+    private func stopWatchingInterrupts() {
+        interruptMonitor.map(NSEvent.removeMonitor)
+        interruptMonitor = nil
     }
 
     deinit {

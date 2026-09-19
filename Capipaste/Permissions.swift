@@ -25,7 +25,7 @@ final class Permissions {
     var onAccessibilityGranted: (() -> Void)?
 
     /// `-setupdemo` pretends nothing is granted yet, to check the setup steps.
-    let demo = CommandLine.arguments.contains("-setupdemo")
+    let demo = hookArguments.contains("-setupdemo")
     /// Capture + dictate are usable once these two are granted; Accessibility is extra.
     var ready: Bool { !demo && screen == .granted && mic == .granted }
     var canDictateHandsFree: Bool { accessibility == .granted }

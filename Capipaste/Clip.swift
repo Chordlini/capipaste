@@ -18,7 +18,7 @@ enum Clip {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("capipaste-\(UUID().uuidString).mov")
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        let args = CommandLine.arguments
+        let args = hookArguments
         if let i = args.firstIndex(of: "-autoclip"), i + 1 < args.count {
             process.arguments = ["-x", "-v", "-V3", "-R", args[i + 1], url.path]
         } else {

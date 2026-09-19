@@ -65,7 +65,7 @@ final class CaptureCard {
 
     /// `-snapshot <png>` writes the rendered card after 3 s (visual checks without Screen Recording).
     private func snapshotIfRequested(_ view: NSView, _ model: CardModel) {
-        let args = CommandLine.arguments
+        let args = hookArguments
         guard let i = args.firstIndex(of: "-snapshot"), i + 1 < args.count else { return }
         let path = args[i + 1]
         Task {
@@ -94,19 +94,19 @@ final class CaptureCard {
 
     /// `-autosubmit`: draws/erases test strokes, then presses Enter for you after 9 s (speak meanwhile).
     private func autosubmitIfRequested(_ model: CardModel) {
-        guard CommandLine.arguments.contains("-autosubmit") else { return }
+        guard hookArguments.contains("-autosubmit") else { return }
         Task {
             try? await Task.sleep(for: .seconds(9))
             // `-addshot <png>`: a second capture joins the note (and gets the test marks)
-            let extra = CommandLine.arguments.firstIndex(of: "-addshot").map { CommandLine.arguments[$0 + 1] }
+            let extra = hookArguments.firstIndex(of: "-addshot").map { hookArguments[$0 + 1] }
             if let extra, let image = NSImage(contentsOfFile: extra) {
                 self.add(image)
                 trace("card: shots=\(model.shots.count) showing=\(model.index)")
                 try? await Task.sleep(for: .seconds(1))
-                if let hosting, let i = CommandLine.arguments.firstIndex(of: "-snapshot"),
+                if let hosting, let i = hookArguments.firstIndex(of: "-snapshot"),
                    let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) {
                     hosting.cacheDisplay(in: hosting.bounds, to: rep)
-                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1] + "-2.png"))
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: hookArguments[i + 1] + "-2.png"))
                 }
             }
             for x in stride(from: 40.0, through: 200, by: 8) { model.drag(to: CGPoint(x: x, y: 60 + x / 4)) }
@@ -143,7 +143,7 @@ final class CaptureCard {
             trace("card: shapes added=\(shapes) after erasing box=\(model.strokes.count) (want one less)")
             model.undo()
             // `-note <text>`: type the note instead of speaking it
-            let args = CommandLine.arguments
+            let args = hookArguments
             if let i = args.firstIndex(of: "-note"), i + 1 < args.count {
                 model.text = args[i + 1]
                 model.textChanged(args[i + 1])
@@ -447,7 +447,15 @@ final class CardModel {
         if level > 0.6 { loudBuffers += 1 }
         peakLevel = max(peakLevel, level)
         stt.feed(samples)
+        // A forgotten card must not be an open mic: past the cap the take ends and the note waits for Enter.
+        if Date().timeIntervalSince(startedAt) > Self.maxTake {
+            trace("card: take reached \(Int(Self.maxTake)) s, mic stopped")
+            Task { _ = await finishTake() }
+        }
     }
+
+    // ponytail: fixed 10 min, make it a setting if anyone narrates longer
+    static let maxTake: TimeInterval = 600
 
     func liveChanged(_ live: String) {
         guard !userEdited, !live.isEmpty else { return }
@@ -472,34 +480,35 @@ final class CardModel {
         levels = levels.map { _ in 0 }
     }
 
+    /// Stops the mic and settles the note (final transcript, then tidy). False when it has to be said again.
+    private func finishTake() async -> Bool {
+        guard recording else { return true }
+        stopRecording()
+        trace("card: take ended, peak=\(peakLevel) avg=\(levelSum / Float(max(levelCount, 1))) loud=\(loudBuffers)/\(levelCount) heard speech=\(heardSpeech)")
+        finishing = true
+        defer { finishing = false; tidying = false }
+        guard let final = await stt.finish(expectSpeech: heardSpeech) else {
+            // Keep the card: ask for a repeat and listen again.
+            trace("card: transcription failed twice, asking to repeat")
+            NSSound(named: "Basso")?.play()
+            startListening()
+            failure = "Transcription failed. Say it one more time."
+            return false
+        }
+        if !final.isEmpty { text = final }
+        if !userEdited {
+            tidying = true
+            var screen = ""
+            for shot in shots { screen += await screenText(of: shot) + "\n" }
+            if let tidy = await AppModel.shared.tidy.rewrite(text, screen: screen) { text = tidy }
+        }
+        return true
+    }
+
     func submit() {
         guard !finishing, !copied else { return }
         Task {
-            if recording {
-                stopRecording()
-                trace("card: submit, peak=\(peakLevel) avg=\(levelSum / Float(max(levelCount, 1))) loud=\(loudBuffers)/\(levelCount) heard speech=\(heardSpeech)")
-                finishing = true
-                let final = await stt.finish(expectSpeech: heardSpeech)
-                finishing = false
-                guard let final else {
-                    // Keep the card: ask for a repeat and listen again.
-                    trace("card: transcription failed twice, asking to repeat")
-                    NSSound(named: "Basso")?.play()
-                    startListening()
-                    failure = "Transcription failed. Say it one more time."
-                    return
-                }
-                if !final.isEmpty { text = final }
-                if !userEdited {
-                    finishing = true
-                    tidying = true
-                    var screen = ""
-                    for shot in shots { screen += await shot.ocr.value + "\n" }
-                    if let tidy = await AppModel.shared.tidy.rewrite(text, screen: screen) { text = tidy }
-                    tidying = false
-                    finishing = false
-                }
-            }
+            guard await finishTake() else { return }
             var pngs: [Data] = []
             for shot in shots {
                 guard let png = Output.render(shot.image, strokes: shot.strokes, lineWidth: Stroke.width / fitScale(for: shot.image)) else {
@@ -512,8 +521,12 @@ final class CardModel {
                 let mode = OCR.Mode.current
                 let wantsOCR = mode == .always || (mode == .terminals && textOnly)
                 var screenTexts: [String] = []
-                for shot in shots { screenTexts.append(wantsOCR ? await shot.ocr.value : "") }
-                let saved = try Output.deliver(pngs: pngs, note: text, context: context?.line, screenTexts: screenTexts, clip: clip, textOnly: textOnly)
+                for shot in shots { screenTexts.append(wantsOCR ? await screenText(of: shot) : "") }
+                // The clip shows the same region as its first frame, so that shot's blur boxes cover every frame.
+                let clipBlurs = clip != nil && shots.first?.image === clip?.frames.first
+                    ? shots[0].strokes.filter { $0.kind == .blur } : []
+                let saved = try Output.deliver(pngs: pngs, note: text, context: context?.line, screenTexts: screenTexts,
+                                               clip: clip, clipBlurs: clipBlurs, textOnly: textOnly)
                 trace("card: delivered \(saved.map(\.lastPathComponent)), text only=\(textOnly)")
             } catch {
                 failure = "Couldn't save: \(error.localizedDescription)"
@@ -524,6 +537,15 @@ final class CardModel {
             try? await Task.sleep(for: .milliseconds(450))
             close()
         }
+    }
+
+    /// What OCR may say about a shot. Text under a blur box must not come back as words,
+    /// so a blurred shot is read again from its flattened image.
+    private func screenText(of shot: Shot) async -> String {
+        guard shot.strokes.contains(where: { $0.kind == .blur }) else { return await shot.ocr.value }
+        guard let png = Output.render(shot.image, strokes: shot.strokes.filter { $0.kind == .blur }, lineWidth: 0),
+              let flattened = NSImage(data: png) else { return "" }
+        return await OCR.text(in: flattened)
     }
 
     func cancel() {

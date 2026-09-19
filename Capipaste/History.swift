@@ -31,14 +31,14 @@ enum History {
 
     static func recent(_ limit: Int = 10) -> [Entry] {
         let files = (try? FileManager.default.contentsOfDirectory(at: AppModel.capturesFolder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        // Newest first by date alone, then read only the notes that will be shown.
         return files.filter { $0.pathExtension == "txt" }
-            .compactMap { url -> Entry? in
-                guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-                let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return Entry(note: url, date: date, text: text)
+            .map { ($0, (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) }
+            .sorted { $0.1 > $1.1 }
+            .prefix(limit)
+            .compactMap { url, date in
+                (try? String(contentsOf: url, encoding: .utf8)).map { Entry(note: url, date: date, text: $0) }
             }
-            .sorted { $0.date > $1.date }
-            .prefix(limit).map { $0 }
     }
 
     /// Puts a past capture back on the clipboard, exactly as it was delivered.

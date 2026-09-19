@@ -61,7 +61,7 @@ If transcription fails or comes back empty while you were talking, Capipaste ret
 
 ### Updates
 
-Capipaste checks GitHub releases and can install them itself if you turn that on in Settings (an automatic install only accepts a build signed with the same identity). Cut one with:
+Capipaste checks GitHub releases and can install them itself if you turn that on in Settings (an install only accepts an intact build signed under Apple's root by the same team; `checks/updater` proves it). Cut one with:
 
 ```sh
 scripts/release.sh 0.2.0 "What changed"   # builds, then uploads Capipaste.dmg + Capipaste.app.zip
@@ -161,6 +161,8 @@ scripts/
 ### Test hooks
 
 For checking the app without clicking through it (results go to `~/Library/Logs/Capipaste.log`):
+
+They only exist in a build made with `scripts/install.sh hooks`. Releases and a plain `install.sh` ignore these arguments, because an app holding Screen Recording and Microphone access shouldn't be steerable by whatever launches it. Reinstall without `hooks` when you're done testing.
 
 ```sh
 open -n /Applications/Capipaste.app --args -autocapture 200,150,1000,600 -autosubmit   # capture a fixed rect, draw, erase, zoom, submit
