@@ -37,7 +37,7 @@ targets:
       path: Capipaste/Info.plist
       properties:
         CFBundleDisplayName: Capipaste
-        CFBundleShortVersionString: "0.2.0"
+        CFBundleShortVersionString: "0.2.1"
         CFBundleVersion: "1"
         LSUIElement: true
         NSMicrophoneUsageDescription: Capipaste turns what you say into the note that goes with your screenshot. Audio never leaves your Mac.
