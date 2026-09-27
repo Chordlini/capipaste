@@ -444,7 +444,7 @@ final class CardModel {
         // ponytail: "speech" = at least 8 loud tap buffers (~0.8 s); tune if quiet voices get missed
         levelSum += level
         levelCount += 1
-        if level > 0.6 { loudBuffers += 1 }
+        if level > 0.57 { loudBuffers += 1 }
         peakLevel = max(peakLevel, level)
         stt.feed(samples)
         // A forgotten card must not be an open mic: past the cap the take ends and the note waits for Enter.

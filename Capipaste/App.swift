@@ -89,6 +89,7 @@ final class AppModel {
 
     func refreshMics() {
         mics = AudioInput.all()
+        Task.detached(priority: .utility) { Recorder.prewarm() }
         if let uid = micUID, !mics.contains(where: { $0.uid == uid }) { micUID = nil }
     }
 

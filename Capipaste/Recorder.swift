@@ -43,7 +43,7 @@ struct AudioInput: Identifiable, Hashable {
         return list.reduce(0) { $0 + Int($1.mNumberChannels) }
     }
 
-    private static func property<T>(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector) -> T? {
+    static func property<T>(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector) -> T? {
         var address = AudioObjectPropertyAddress(
             mSelector: selector,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -59,11 +59,49 @@ struct AudioInput: Identifiable, Hashable {
 /// Taps the chosen microphone and hands out 16 kHz mono samples plus a 0...1 level.
 final class Recorder: @unchecked Sendable {
     private var engine: AVAudioEngine?
+    private static let lock = NSLock()
+    private static var warm: (engine: AVAudioEngine, device: AudioDeviceID?)?
+
+    /// Turning on voice processing costs ~0.7 s, so do it off the hotkey path. Doesn't open the mic.
+    static func prewarm() { lock.withLock { _ = try? voiceEngine() } }
+
+    // ponytail: one cached engine, rebuilt when the default input changes
+    private static func voiceEngine() throws -> AVAudioEngine {
+        let device = defaultInputID()
+        if let warm, warm.device == device { return warm.engine }
+        let engine = AVAudioEngine()
+        // Apple's voice processing: noise suppression + echo cancel. Must be set before reading the format.
+        try engine.inputNode.setVoiceProcessingEnabled(true)
+        if #available(macOS 14.0, *) {
+            engine.inputNode.voiceProcessingOtherAudioDuckingConfiguration = .init(enableAdvancedDucking: false, duckingLevel: .min)
+        }
+        warm = (engine, device)
+        return engine
+    }
+
+    private static func defaultInputID() -> AudioDeviceID? {
+        AudioInput.property(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice)
+    }
 
     func start(device: AudioInput?, onAudio: @escaping @Sendable ([Float], Float) -> Void) throws {
-        let engine = AVAudioEngine() // fresh engine per session so device switches always apply
+        // Voice processing (noise suppression) only runs on the system default input: pointing it at another
+        // device fails to initialize (-10875) and can hang the next start. Other mics record raw.
+        let suppress = device == nil || device?.id == Self.defaultInputID()
+        do {
+            try start(device: device, suppress: suppress, onAudio: onAudio)
+        } catch where suppress {
+            trace("recorder: voice processing start failed (\(error)), retrying raw")
+            stop()
+            Self.lock.withLock { Self.warm = nil }
+            try start(device: device, suppress: false, onAudio: onAudio)
+        }
+    }
+
+    private func start(device: AudioInput?, suppress: Bool, onAudio: @escaping @Sendable ([Float], Float) -> Void) throws {
+        // Raw: fresh engine per session so device switches always apply. Suppressed: the prewarmed one.
+        let engine = suppress ? try Self.lock.withLock { try Self.voiceEngine() } : AVAudioEngine()
         let input = engine.inputNode
-        if var id = device?.id, let unit = input.audioUnit {
+        if !suppress, var id = device?.id, let unit = input.audioUnit {
             AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
                                  &id, UInt32(MemoryLayout<AudioDeviceID>.size))
         }
@@ -72,6 +110,7 @@ final class Recorder: @unchecked Sendable {
               let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: inFormat, to: outFormat)
         else { throw RecorderError.noInput }
+        converter.channelMap = [0] // voice processing hands back 9 channels; without this the mono downmix is silent
 
         input.installTap(onBus: 0, bufferSize: 1024, format: inFormat) { buffer, _ in
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * 16_000 / inFormat.sampleRate) + 16
@@ -86,13 +125,13 @@ final class Recorder: @unchecked Sendable {
             guard let data = out.floatChannelData?[0], out.frameLength > 0 else { return }
             let samples = Array(UnsafeBufferPointer(start: data, count: Int(out.frameLength)))
             let rms = (samples.reduce(0) { $0 + $1 * $1 } / Float(samples.count)).squareRoot()
-            // ponytail: fixed dB window (-50...-10), expose a gain knob if quiet mics look flat
-            let level = min(max((20 * log10(max(rms, 1e-6)) + 50) / 40, 0), 1)
+            // ponytail: fixed dB window (-60...0) so speech sits mid-meter instead of pinned; gain knob if quiet mics look flat
+            let level = min(max((20 * log10(max(rms, 1e-6)) + 60) / 60, 0), 1)
             onAudio(samples, level)
         }
+        self.engine = engine // set before start so stop() can clean up a failed start
         engine.prepare()
         try engine.start()
-        self.engine = engine
     }
 
     func stop() {

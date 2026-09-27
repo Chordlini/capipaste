@@ -107,7 +107,7 @@ final class DictationModel {
         levels.append(level)
         buffers += 1
         peak = max(peak, level)
-        if level > 0.6 { loudBuffers += 1 }
+        if level > 0.57 { loudBuffers += 1 }
         stt.feed(samples)
     }
 

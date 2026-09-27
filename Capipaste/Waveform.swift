@@ -5,14 +5,14 @@ struct Waveform: View {
     let levels: [Float]
     let live: Bool
 
-    private let dot: CGFloat = 3
-    private let gap: CGFloat = 1.5
-    private let rows = 5
+    private let dot: CGFloat = 2
+    private let gap: CGFloat = 1
 
     var body: some View {
         Canvas { ctx, size in
-            // One column every 7pt, fed from the newest levels.
-            let shown = Array(levels.suffix(max(Int(size.width / 7), 1)))
+            // One column every 4pt, as many rows as the height fits.
+            let rows = max(Int((size.height / 2 - dot / 2) / (dot + gap)), 1)
+            let shown = Array(levels.suffix(max(Int(size.width / 4), 1)))
             let columnWidth = size.width / CGFloat(shown.count)
             var lit = Path()
             var faint = Path()
