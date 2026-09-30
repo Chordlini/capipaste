@@ -53,6 +53,17 @@ final class AppModel {
         KeyboardShortcuts.onKeyDown(for: .dictate) { [weak self] in self?.startDictation() }
         KeyboardShortcuts.onKeyUp(for: .dictate) { [weak self] in self?.dictation?.finish() }
         refreshMics()
+        AudioInput.watch(kAudioHardwarePropertyDevices) { Task { @MainActor in AppModel.shared.refreshMics() } }
+        AudioInput.watch(kAudioHardwarePropertyDefaultInputDevice) {
+            Recorder.invalidate()
+            Task { @MainActor in AppModel.shared.refreshMics() }
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
+            flushLog()
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
+            Recorder.invalidate(force: true)
+        }
         permissions.onAccessibilityGranted = { [weak self] in
             trace("permissions: accessibility granted, arming hold-to-talk")
             self?.pushToTalk?.restart()
@@ -68,6 +79,7 @@ final class AppModel {
             onAbort: { [weak self] in self?.dictation?.cancel() },
             onStop: { [weak self] in self?.dictation?.finish() })
         Task { await stt.warmUp() }
+        Task.detached(priority: .utility) { Recordings.prune() }
         if updater.checkOnLaunch { Task { await updater.check() } }
         showSettingsOnFirstRun()
         openDemoIfRequested()
@@ -87,14 +99,23 @@ final class AppModel {
         }
     }
 
+    /// CoreAudio can stall on a sleepy Bluetooth device, so the list is read off the main thread.
     func refreshMics() {
-        mics = AudioInput.all()
-        Task.detached(priority: .utility) { Recorder.prewarm() }
-        if let uid = micUID, !mics.contains(where: { $0.uid == uid }) { micUID = nil }
+        Task.detached(priority: .userInitiated) {
+            let found = AudioInput.all()
+            Recorder.prewarm()
+            await MainActor.run {
+                self.mics = found
+                if let uid = self.micUID, !found.contains(where: { $0.uid == uid }) { self.micUID = nil }
+            }
+        }
     }
 
+    /// With no mic picked, the system default, except that a Bluetooth headset gives way to the built-in mic
+    /// (Settings › Speech) so your music doesn't drop to call quality.
     var selectedMic: AudioInput? {
-        mics.first { $0.uid == micUID } ?? mics.first { $0.isDefault }
+        AudioInput.choose(from: mics, picked: micUID,
+                          avoidBluetooth: UserDefaults.standard.object(forKey: "avoidBluetoothMic") as? Bool ?? true)
     }
 
     func capture() {
@@ -114,10 +135,7 @@ final class AppModel {
             }
             return
         }
-        if !CGPreflightScreenCaptureAccess() {
-            // macOS shows its own prompt; the capture works once access is granted.
-            CGRequestScreenCaptureAccess()
-        }
+        guard hasScreenAccess() else { return }
         let context = Task { await CaptureContext.read(from: source) }
         Task {
             let url = await Capture.region()
@@ -132,12 +150,23 @@ final class AppModel {
     func recordClip() {
         let source = NSWorkspace.shared.frontmostApplication
         guard card == nil else { card?.focus(); return }
-        if !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }
+        guard hasScreenAccess() else { return }
         let context = Task { await CaptureContext.read(from: source) }
         Task {
             guard let clip = await Clip.record(), let first = clip.frames.first else { return }
             await open(first, returnTo: source, context: await context.value, clip: clip)
         }
+    }
+
+    /// Without Screen Recording, screencapture quietly returns just the wallpaper: ask, and show where to
+    /// allow it, instead of opening a card on a blank shot.
+    private func hasScreenAccess() -> Bool {
+        if CGPreflightScreenCaptureAccess() { return true }
+        trace("capture: no Screen Recording access")
+        CGRequestScreenCaptureAccess() // macOS shows its own prompt the first time
+        permissions.refresh()
+        openSettings(tab: .permissions)
+        return false
     }
 
     /// Copies the last capture again and pastes it where you are.
@@ -151,6 +180,12 @@ final class AppModel {
     private func open(_ image: NSImage, returnTo source: NSRunningApplication? = nil, context: CaptureContext? = nil,
                       clip: Clip.Recording? = nil) async {
         trace("open: image \(image.size), mic status=\(AVCaptureDevice.authorizationStatus(for: .audio).rawValue)")
+        // One take owns the mic and the speech engine at a time.
+        if let card {
+            card.add(image) // a second capture (or a clip) that finished while this card was open joins it
+            return
+        }
+        dictation?.cancel()
         card = CaptureCard(image: image, mic: selectedMic, stt: stt, textOnly: Terminals.contains(source), context: context, clip: clip) { [weak self] in
             self?.card = nil
             // Hand focus back so ⌘V lands where the capture started.
@@ -243,42 +278,61 @@ final class AppModel {
         }
     }
 
-    /// `-sttfile <audio>` runs the active speech model over a file and logs the result (testing).
+    /// `-sttfile <audio>…` runs the active speech model over each file, logs the results and quits (testing).
+    /// `-sttmodel <name>` picks the model for this run (downloading it first); your choice is restored after.
     private func transcribeFileIfRequested() {
         let args = hookArguments
         guard let i = args.firstIndex(of: "-sttfile"), i + 1 < args.count else { return }
+        let files = args[(i + 1)...].prefix { !$0.hasPrefix("-") }
         Task {
-            do {
-                let file = try AVAudioFile(forReading: URL(fileURLWithPath: args[i + 1]))
-                let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
-                let input = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length))!
-                try file.read(into: input)
-                let converter = AVAudioConverter(from: file.processingFormat, to: format)!
-                let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(Double(file.length) * 16_000 / file.processingFormat.sampleRate) + 16)!
-                var fed = false
-                converter.convert(to: output, error: nil) { _, status in
-                    if fed { status.pointee = .endOfStream; return nil }
-                    fed = true
-                    status.pointee = .haveData
-                    return input
+            let chosen = stt.active
+            if let m = args.firstIndex(of: "-sttmodel"), m + 1 < args.count, let model = SpeechModel(rawValue: args[m + 1]) {
+                if !stt.isReady(model) {
+                    stt.download(model)
+                    while !stt.isReady(model), stt.problem == nil { try? await Task.sleep(for: .milliseconds(500)) }
                 }
-                let samples = Array(UnsafeBufferPointer(start: output.floatChannelData![0], count: Int(output.frameLength)))
-                trace("sttfile: \(samples.count) samples with \(stt.inUse)")
-                stt.begin()
-                for start in stride(from: 0, to: samples.count, by: 1600) {
-                    stt.feed(Array(samples[start..<min(start + 1600, samples.count)]))
-                }
-                let text = await stt.finish(expectSpeech: true)
-                trace("sttfile: result=\(text ?? "nil (failed)") problem=\(stt.problem ?? "none")")
-            } catch {
-                trace("sttfile: \(error)")
+                stt.active = model
+                await stt.warmUp()
             }
+            for path in files { await transcribe(file: path) }
+            if stt.active != chosen { stt.active = chosen }
+            NSApp.terminate(nil)
+        }
+    }
+
+    private func transcribe(file path: String) async {
+        do {
+            let file = try AVAudioFile(forReading: URL(fileURLWithPath: path))
+            let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
+            let input = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length))!
+            try file.read(into: input)
+            let converter = AVAudioConverter(from: file.processingFormat, to: format)!
+            let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(Double(file.length) * 16_000 / file.processingFormat.sampleRate) + 16)!
+            var fed = false
+            converter.convert(to: output, error: nil) { _, status in
+                if fed { status.pointee = .endOfStream; return nil }
+                fed = true
+                status.pointee = .haveData
+                return input
+            }
+            let samples = Array(UnsafeBufferPointer(start: output.floatChannelData![0], count: Int(output.frameLength)))
+            trace("sttfile: \(samples.count) samples with \(stt.inUse)")
+            stt.begin()
+            for start in stride(from: 0, to: samples.count, by: 1600) {
+                stt.feed(Array(samples[start..<min(start + 1600, samples.count)]))
+            }
+            let began = Date()
+            let text = await stt.finish(expectSpeech: true).text
+            trace("sttfile: \(stt.inUse) \((path as NSString).lastPathComponent) finish=\(Int(Date().timeIntervalSince(began) * 1000)) ms result=\(text ?? "nil (failed)") problem=\(stt.problem ?? "none")")
+        } catch {
+            trace("sttfile: \(error)")
         }
     }
 
     /// Hold-to-talk: a bar with the live transcript, no screenshot.
     func startDictation() {
-        guard dictation == nil else { return }
+        // The card owns the speech session while it's open: right-⌘+Z there must not restart it.
+        guard dictation == nil, card == nil else { return }
         let source = NSWorkspace.shared.frontmostApplication
         trace("dictation: start from \(source?.localizedName ?? "unknown")")
         dictation = DictationBar(mic: selectedMic, stt: stt, returnTo: source,
@@ -304,9 +358,9 @@ final class AppModel {
         pushToTalk?.restart()
     }
 
-    func openSettings() {
+    func openSettings(tab: SettingsView.Tab = .general) {
         SettingsWindow.shared.show(
-            SettingsView()
+            SettingsView(tab: tab)
                 .environment(self)
                 .environment(stt)
                 .environment(permissions)
@@ -380,18 +434,34 @@ enum MenuGlyph {
     }()
 }
 
-/// Appends a line to ~/Library/Logs/Capipaste.log (capture-flow breadcrumbs).
+/// Appends a line to ~/Library/Logs/Capipaste.log (capture-flow breadcrumbs). One writer at a time, from
+/// any thread; past 2 MB the log moves to Capipaste.old.log so it never grows without end.
 func trace(_ message: String) {
-    let url = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("Logs/Capipaste.log")
     let line = "\(Date().formatted(.iso8601)) \(message)\n"
-    if let handle = try? FileHandle(forWritingTo: url) {
-        handle.seekToEndOfFile()
-        handle.write(Data(line.utf8))
-        try? handle.close()
-    } else {
-        try? Data(line.utf8).write(to: url)
+    Log.queue.async {
+        let manager = FileManager.default
+        if let size = (try? manager.attributesOfItem(atPath: Log.url.path))?[.size] as? Int, size > 2_000_000 {
+            let old = Log.url.deletingLastPathComponent().appendingPathComponent("Capipaste.old.log")
+            try? manager.removeItem(at: old)
+            try? manager.moveItem(at: Log.url, to: old)
+        }
+        if let handle = try? FileHandle(forWritingTo: Log.url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: Log.url)
+        }
     }
+}
+
+/// Waits for queued log lines to land (before quitting).
+func flushLog() { Log.queue.sync {} }
+
+private enum Log {
+    static let queue = DispatchQueue(label: "capipaste.log", qos: .utility)
+    static let url = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Logs/Capipaste.log")
 }
 
 /// Apps where a pasted image beats pasted text (Claude Code attaches the image and drops the note),

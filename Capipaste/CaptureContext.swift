@@ -70,7 +70,9 @@ struct CaptureContext {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 done.resume(returning: text?.isEmpty == false ? text : nil)
             }
-            do { try process.run() } catch { done.resume(returning: nil) }
+            do { try process.run() } catch { done.resume(returning: nil); return }
+            // The card waits for this: a hung browser or an unanswered permission prompt mustn't hold it for minutes.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) { if process.isRunning { process.terminate() } }
         }
     }
 }

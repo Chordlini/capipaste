@@ -92,8 +92,13 @@ final class PushToTalk {
             // Any other key or click while holding means the modifier is part of a shortcut, not speech.
             // Installed per hold, so the rest of the day's typing never reaches this app.
             interruptMonitor = NSEvent.addGlobalMonitorForEvents(
-                matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] _ in
-                Task { @MainActor in self?.cancelHold() }
+                matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] event in
+                let isKey = event.type == .keyDown
+                Task { @MainActor in
+                    // Past the shortcut window a scroll or click is just you moving around while you talk.
+                    guard let self, isKey || !self.armed else { return }
+                    self.cancelHold()
+                }
             }
             onStart()
             holdTask = Task { [weak self] in

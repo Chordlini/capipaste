@@ -25,7 +25,7 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Capipaste reads the address of the page you captured so the note says where the screenshot came from.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Capipaste turns what you say into the note that goes with your screenshot. Audio never leaves your Mac.</string>
+	<string>Capipaste turns what you say into the note that goes with your screenshot. Audio stays on your Mac unless you add your own OpenAI or Groq key.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Capipaste can use Apple's on-device speech model when no other model is downloaded.</string>
 </dict>

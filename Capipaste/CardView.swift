@@ -221,7 +221,7 @@ struct CardView: View {
             .foregroundStyle(.black.opacity(0.7))
             .frame(minWidth: 56, alignment: .leading)
 
-            Waveform(levels: model.levels, live: model.recording)
+            CardMeter(model: model)
                 .frame(height: 46)
 
             Text(model.stt.inUse.chip)
@@ -342,4 +342,10 @@ struct VisualEffect: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+/// Reads the levels in its own body, so only the meter redraws per audio buffer, not the whole card.
+private struct CardMeter: View {
+    let model: CardModel
+    var body: some View { Waveform(levels: model.levels, live: model.recording) }
 }

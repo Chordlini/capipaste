@@ -47,6 +47,25 @@ struct Stroke {
         return path
     }
 
+    /// Cuts out only the points under the eraser (image points), splitting pen strokes into the pieces
+    /// that remain; shapes it touches go whole.
+    static func erase(_ strokes: [Stroke], at point: CGPoint, radius: CGFloat) -> [Stroke] {
+        strokes.flatMap { stroke -> [Stroke] in
+            guard stroke.kind == .pen else { return stroke.touches(point, radius: radius) ? [] : [stroke] }
+            var pieces: [Stroke] = []
+            var run: [CGPoint] = []
+            for p in stroke.points {
+                if hypot(p.x - point.x, p.y - point.y) <= radius {
+                    if !run.isEmpty { pieces.append(Stroke(points: run)); run = [] }
+                } else {
+                    run.append(p)
+                }
+            }
+            if !run.isEmpty { pieces.append(Stroke(points: run)) }
+            return pieces
+        }
+    }
+
     /// Whether the eraser at `p` (image points) touches this shape. Pen strokes are cut point by point instead.
     func touches(_ p: CGPoint, radius: CGFloat) -> Bool {
         func near(_ a: CGPoint, _ b: CGPoint) -> Bool {
@@ -107,6 +126,8 @@ enum Output {
         return NSBitmapImageRep(cgImage: flattened).representation(using: .png, properties: [:])
     }
 
+    private static let ciContext = CIContext() // expensive to make; one is thread-safe to share
+
     /// The whole capture as a coarse mosaic; blur boxes show this through their clip.
     static func pixelated(_ cg: CGImage) -> CGImage? {
         let image = CIImage(cgImage: cg)
@@ -114,16 +135,17 @@ enum Output {
         // which pixelation-reversing tools can read. Solid redaction if this ever has to resist a determined attacker.
         let block = max(24, Double(cg.width) / 70)
         let mosaic = image.clampedToExtent().applyingFilter("CIPixellate", parameters: ["inputScale": block]).cropped(to: image.extent)
-        return CIContext().createCGImage(mosaic, from: image.extent)
+        return ciContext.createCGImage(mosaic, from: image.extent)
     }
 
     /// Saves the PNGs and puts image(s) + note on the clipboard. Returns the saved files.
     @discardableResult
     static func deliver(pngs: [Data], note: String, context: String? = nil, screenTexts: [String] = [],
-                        clip: Clip.Recording? = nil, clipBlurs: [Stroke] = [], textOnly: Bool = false) throws -> [URL] {
+                        clip: Clip.Recording? = nil, clipBlurs: [Stroke] = [], textOnly: Bool = false,
+                        audio: [Float] = []) throws -> [URL] {
         let folder = AppModel.capturesFolder
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let stamp = Date().formatted(.verbatim("\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) at \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)).\(minute: .twoDigits).\(second: .twoDigits)", timeZone: .current, calendar: .current))
+        let stamp = stamp(in: folder)
         let many = pngs.count > 1
         var urls: [URL] = []
         for (i, png) in pngs.enumerated() {
@@ -169,8 +191,22 @@ enum Output {
             item.setString(movie.absoluteString, forType: .fileURL)
             NSPasteboard.general.writeObjects([item])
         }
-        History.save(text, besides: urls[0])
+        Recordings.save(audio, besides: History.save(text, besides: urls[0]))
         return urls
+    }
+
+    /// `2026-09-22 at 14.03.07`, like macOS names screenshots; ` 2`, ` 3`… when that second is taken already.
+    static func stamp(in folder: URL, now: Date = Date()) -> String {
+        let base = stamp(now)
+        let taken = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+            .map { ($0 as NSString).deletingPathExtension }
+        func free(_ name: String) -> Bool { !taken.contains { $0 == "Capipaste \(name)" || $0.hasPrefix("Capipaste \(name) ") } }
+        if free(base) { return base }
+        return (2...).lazy.map { "\(base) \($0)" }.first(where: free)!
+    }
+
+    static func stamp(_ date: Date) -> String {
+        date.formatted(.verbatim("\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) at \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)).\(minute: .twoDigits).\(second: .twoDigits)", timeZone: .current, calendar: .current))
     }
 }
 
@@ -182,8 +218,8 @@ extension Output {
             let item = NSPasteboardItem()
             if !textOnly {
                 if many { item.setString(urls[i].absoluteString, forType: .fileURL) }
+                // PNG only: a TIFF copy is uncompressed (~60 MB for a 5K shot) and every app we paste into reads PNG.
                 item.setData(png, forType: .png)
-                if let tiff = NSImage(data: png)?.tiffRepresentation { item.setData(tiff, forType: .tiff) }
             }
             return item
         }
@@ -193,22 +229,119 @@ extension Output {
         NSPasteboard.general.writeObjects(textOnly || items.isEmpty ? [first] : items)
     }
 
-    /// Dictation: text only, no image.
-    static func deliver(text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+    /// Dictation: text only, no image. Saved to history (with its recording) like a capture.
+    /// With `pasting`, the text goes up as a one-off paste and what you had copied comes back afterwards.
+    @MainActor static func deliver(text: String, audio: [Float] = [], pasting: Bool = false) {
+        if pasting {
+            PasteSession.start(text) // pasted() is marked by paste()
+        } else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+        let folder = AppModel.capturesFolder
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let note = History.save(text, besides: folder.appendingPathComponent("Capipaste \(stamp(in: folder)).txt"))
+        Recordings.save(audio, besides: note)
     }
 
     /// Presses ⌘V in whatever app is frontmost. Needs Accessibility.
-    static func paste() {
+    @MainActor static func paste() {
         guard AXIsProcessTrusted() else { return }
-        let source = CGEventSource(stateID: .combinedSessionState)
-        let v: CGKeyCode = 9
-        let down = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: v, keyDown: false)
-        down?.flags = .maskCommand
-        up?.flags = .maskCommand
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
+        // Private state: keys you're still holding (the ⌥ of a shortcut) don't merge into this ⌘V.
+        // ⌘ down, V down, V up, ⌘ up, as a hand would: some apps ignore a V that arrives with ⌘ already gone.
+        let source = CGEventSource(stateID: .privateState)
+        let command: CGKeyCode = 55, v: CGKeyCode = 9
+        let steps: [(CGKeyCode, Bool, CGEventFlags)] = [(command, true, .maskCommand), (v, true, .maskCommand),
+                                                        (v, false, .maskCommand), (command, false, [])]
+        for (key, down, flags) in steps {
+            let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down)
+            event?.flags = flags
+            event?.post(tap: .cghidEventTap)
+            usleep(8_000)
+        }
+        PasteSession.current?.pasted()
     }
+}
+
+/// A dictation paste that leaves your clipboard as it found it. The text is offered lazily, so we see the
+/// target app actually read it (after our ⌘V); once reads go quiet, and only if nothing else has touched the
+/// clipboard since, what you had copied is put back. Clipboard managers are told to skip the one-off text.
+@MainActor
+final class PasteSession: NSObject, NSPasteboardItemDataProvider {
+    static private(set) var current: PasteSession?
+    /// Swapped by the checks so they never touch your clipboard.
+    static var board = NSPasteboard.general
+    /// How long an unread paste waits before settling for leaving the text on the clipboard.
+    static var giveUp: Double = 8
+
+    private nonisolated let text: String
+    private let saved: [NSPasteboardItem]
+    private var changeCount = 0
+    private var pastedAt: Date?
+    private var restoreTask: Task<Void, Never>?
+
+    private init(text: String) {
+        self.text = text
+        // Deep copy: the originals belong to the pasteboard and die with clearContents().
+        saved = (Self.board.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
+            return copy
+        }
+    }
+
+    static func start(_ text: String) {
+        current?.finish(restore: false) // a newer paste wins; the older one's snapshot is already stale
+        let session = PasteSession(text: text)
+        let pasteboard = board
+        pasteboard.clearContents()
+        let item = NSPasteboardItem()
+        item.setDataProvider(session, forTypes: [.string])
+        item.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        item.setString("", forType: NSPasteboard.PasteboardType("org.nspasteboard.AutoGeneratedType"))
+        pasteboard.writeObjects([item])
+        session.changeCount = pasteboard.changeCount
+        current = session
+        // No ⌘V (no Accessibility) or nobody reads: keep the text on the clipboard, like before.
+        session.schedule(after: giveUp, restore: false)
+    }
+
+    /// Our ⌘V went out; reads from now on are the paste.
+    func pasted() { pastedAt = Date() }
+
+    nonisolated func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem, provideDataForType type: NSPasteboard.PasteboardType) {
+        item.setString(text, forType: type)
+        Task { @MainActor in
+            // ponytail: 250 ms of quiet after the last read (Chromium reads twice); a slow app that reads
+            // later than that gets the restored clipboard, lengthen if one shows up
+            if self.pastedAt != nil { self.schedule(after: 0.25, restore: true) }
+        }
+    }
+
+    private func schedule(after seconds: Double, restore: Bool) {
+        restoreTask?.cancel()
+        restoreTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            self?.finish(restore: restore)
+        }
+    }
+
+    private func finish(restore: Bool) {
+        restoreTask?.cancel()
+        if Self.current === self { Self.current = nil }
+        let pasteboard = Self.board
+        // Someone copied something since: theirs wins.
+        guard pasteboard.changeCount == changeCount else { return }
+        if restore {
+            pasteboard.clearContents()
+            if !saved.isEmpty { pasteboard.writeObjects(saved) }
+        } else {
+            // Leaving the text in place: swap the lazy promise for the real string, so it survives us.
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+        }
+    }
+
+    nonisolated func pasteboardFinishedWithDataProvider(_ pasteboard: NSPasteboard) {}
 }

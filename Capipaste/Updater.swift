@@ -54,7 +54,7 @@ final class Updater {
                                  page: page, zip: zip, notes: json["body"] as? String ?? "")
             release = latest
             lastChecked = .now
-            if isNewer(latest.version, than: currentVersion) {
+            if Self.isNewer(latest.version, than: currentVersion) {
                 status = .available(latest.version)
                 if installAutomatically, latest.zip != nil { await install() }
             } else {
@@ -68,30 +68,34 @@ final class Updater {
     /// Downloads the release zip, checks it is signed the same as this copy, swaps it in, relaunches.
     func install() async {
         guard let release, let zip = release.zip else { return }
+        // Never replace this copy with an older (or the same) build.
+        guard Self.isNewer(release.version, than: currentVersion) else { status = .upToDate; return }
+        let unpacked = FileManager.default.temporaryDirectory
+            .appendingPathComponent("capipaste-update-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: unpacked) }
         do {
             status = .downloading(0)
             let (file, _) = try await URLSession.shared.download(from: zip)
+            defer { try? FileManager.default.removeItem(at: file) }
             status = .downloading(0.6)
-            let unpacked = FileManager.default.temporaryDirectory
-                .appendingPathComponent("capipaste-update-\(UUID().uuidString)")
-            try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
-            let unzip = Process()
-            unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-            unzip.arguments = ["-xk", file.path, unpacked.path]
-            try unzip.run()
-            unzip.waitUntilExit()
-            guard unzip.terminationStatus == 0,
-                  let app = try FileManager.default.contentsOfDirectory(at: unpacked, includingPropertiesForKeys: nil)
-                      .first(where: { $0.pathExtension == "app" }) else {
-                status = .failed("The download didn't contain an app.")
-                return
-            }
-            guard try sameSigner(as: app) else {
-                status = .failed("That build is signed by someone else — install it by hand.")
-                return
-            }
-            let destination = Bundle.main.bundleURL
-            _ = try FileManager.default.replaceItemAt(destination, withItemAt: app)
+            // Unzipping and checking every signature takes seconds: off the main thread.
+            let outcome: String? = try await Task.detached(priority: .userInitiated) {
+                try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
+                let unzip = Process()
+                unzip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+                unzip.arguments = ["-xk", file.path, unpacked.path]
+                try unzip.run()
+                unzip.waitUntilExit()
+                guard unzip.terminationStatus == 0,
+                      let app = try FileManager.default.contentsOfDirectory(at: unpacked, includingPropertiesForKeys: nil)
+                          .first(where: { $0.pathExtension == "app" }) else {
+                    return "The download didn't contain an app."
+                }
+                guard Self.sameSigner(as: app) else { return "That build is signed by someone else — install it by hand." }
+                _ = try FileManager.default.replaceItemAt(Bundle.main.bundleURL, withItemAt: app)
+                return nil
+            }.value
+            if let outcome { status = .failed(outcome); return }
             status = .readyToRelaunch
         } catch {
             status = .failed(error.localizedDescription)
@@ -100,7 +104,7 @@ final class Updater {
 
     /// The download must be intact and signed, under Apple's root, by the team that signed this copy.
     /// (A certificate's name alone proves nothing: anyone can make one that says anything.)
-    private func sameSigner(as candidate: URL) throws -> Bool {
+    nonisolated private static func sameSigner(as candidate: URL) -> Bool {
         var mine: SecStaticCode?
         var info: CFDictionary?
         guard SecStaticCodeCreateWithPath(Bundle.main.bundleURL as CFURL, [], &mine) == errSecSuccess, let mine,
@@ -113,7 +117,8 @@ final class Updater {
     nonisolated static func isValid(_ app: URL, team: String) -> Bool {
         var code: SecStaticCode?
         var requirement: SecRequirement?
-        let rule = "anchor apple generic and certificate leaf[subject.OU] = \"\(team)\""
+        // Same team AND this app: another app the team signed must not be able to replace Capipaste.
+        let rule = "anchor apple generic and identifier \"com.chordlini.capipaste\" and certificate leaf[subject.OU] = \"\(team)\""
         guard SecStaticCodeCreateWithPath(app as CFURL, [], &code) == errSecSuccess, let code,
               SecRequirementCreateWithString(rule as CFString, [], &requirement) == errSecSuccess, let requirement
         else { return false }
@@ -121,9 +126,13 @@ final class Updater {
         return SecStaticCodeCheckValidity(code, flags, requirement) == errSecSuccess
     }
 
-    private func isNewer(_ candidate: String, than current: String) -> Bool {
-        let a = candidate.split(separator: ".").map { Int($0) ?? 0 }
-        let b = current.split(separator: ".").map { Int($0) ?? 0 }
+    /// `0.2.10` beats `0.2.9`; a suffix like `-beta` or `rc1` reads as its leading number.
+    nonisolated static func isNewer(_ candidate: String, than current: String) -> Bool {
+        func parts(_ version: String) -> [Int] {
+            version.trimmingCharacters(in: CharacterSet(charactersIn: "vV")).split(separator: ".")
+                .map { Int($0.prefix(while: \.isNumber)) ?? 0 }
+        }
+        let a = parts(candidate), b = parts(current)
         for i in 0..<max(a.count, b.count) {
             let left = i < a.count ? a[i] : 0, right = i < b.count ? b[i] : 0
             if left != right { return left > right }

@@ -49,9 +49,16 @@ final class CaptureCard {
             // Let SwiftUI lay out the new size first, then grow/shrink around the same centre.
             DispatchQueue.main.async { self?.fit() }
         }
+        var closed = false
         model.close = { [panel, weak self] in
+            // Esc during "Transcribing…" and the finished submit both end here: only the first one counts.
+            guard !closed else { return }
+            closed = true
             if let monitor = self?.scrollMonitor { NSEvent.removeMonitor(monitor) }
             panel.orderOut(nil)
+            // The hosting view holds the model, which holds this closure, which holds the panel: let go of the view
+            // (next turn, since this can run inside one of its own key handlers).
+            DispatchQueue.main.async { panel.contentView = nil }
             onClose()
         }
         NSApp.activate()
@@ -139,7 +146,7 @@ final class CaptureCard {
             }
             let shapes = model.strokes.count
             model.tool = .erase
-            model.drag(to: CGPoint(x: 200, y: 50)); model.endDrag()
+            model.drag(to: CGPoint(x: 330, y: 50)); model.endDrag() // the box's right edge, clear of the blur
             trace("card: shapes added=\(shapes) after erasing box=\(model.strokes.count) (want one less)")
             model.undo()
             // `-note <text>`: type the note instead of speaking it
@@ -230,6 +237,10 @@ final class CardModel {
     var tidying = false
     var copied = false
     var failure: String?
+    /// Set once the card is going away; work still in flight checks it before touching the clipboard.
+    private(set) var closed = false
+    /// 16 kHz audio of the finished take, kept for Recordings (the next take reuses the speech engine).
+    private var audio: [Float] = []
     var startedAt = Date()
     var stoppedAfter: TimeInterval?
     var levels = [Float](repeating: 0, count: 96)
@@ -250,14 +261,15 @@ final class CardModel {
 
     var tool: Tool = .draw
     var current: Stroke?
-    /// Each capture as a mosaic, shown through blur boxes (made on first use).
-    @ObservationIgnored private var mosaics: [ObjectIdentifier: NSImage] = [:]
+    /// Each capture as a mosaic, shown through blur boxes (made on first use). The entry keeps its image
+    /// alive, so a freed shot's address can't be reused by another and show the wrong mosaic.
+    @ObservationIgnored private var mosaics: [ObjectIdentifier: (image: NSImage, mosaic: NSImage?)] = [:]
     var mosaic: NSImage? {
         let key = ObjectIdentifier(image)
-        if let cached = mosaics[key] { return cached }
+        if let cached = mosaics[key] { return cached.mosaic }
         let made = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
             .flatMap(Output.pixelated).map { NSImage(cgImage: $0, size: image.size) }
-        mosaics[key] = made
+        mosaics[key] = (image, made)
         return made
     }
 
@@ -380,7 +392,7 @@ final class CardModel {
                 let granted = await AVCaptureDevice.requestAccess(for: .audio)
                 trace("card: mic granted=\(granted)")
                 failure = granted ? nil : Self.micDenied
-                if granted, !userEdited, !copied { startListening() }
+                if granted, !userEdited, !copied, !closed { startListening() }
             }
             return
         default:
@@ -404,7 +416,7 @@ final class CardModel {
         trace("card: opening mic \(mic.name)")
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                try recorder.start(device: mic) { samples, level in
+                try await recorder.start(device: mic) { samples, level in
                     Task { @MainActor in self?.receive(samples, level) }
                 }
                 trace("card: mic engine started")
@@ -439,8 +451,7 @@ final class CardModel {
 
     private func receive(_ samples: [Float], _ level: Float) {
         guard recording else { return }
-        levels.removeFirst()
-        levels.append(level)
+        levels = Array(levels.dropFirst()) + [level] // one change per buffer, not two
         // ponytail: "speech" = at least 8 loud tap buffers (~0.8 s); tune if quiet voices get missed
         levelSum += level
         levelCount += 1
@@ -482,12 +493,24 @@ final class CardModel {
 
     /// Stops the mic and settles the note (final transcript, then tidy). False when it has to be said again.
     private func finishTake() async -> Bool {
+        // A mic still opening must not come up after the note is done: it would stay on with no card.
+        startingMic = false
         guard recording else { return true }
         stopRecording()
         trace("card: take ended, peak=\(peakLevel) avg=\(levelSum / Float(max(levelCount, 1))) loud=\(loudBuffers)/\(levelCount) heard speech=\(heardSpeech)")
         finishing = true
         defer { finishing = false; tidying = false }
-        guard let final = await stt.finish(expectSpeech: heardSpeech) else {
+        // Names under a blur box stay on this Mac: spelling hints come from the blur-aware text only.
+        if shots.contains(where: { $0.strokes.contains { $0.kind == .blur } }) {
+            var words: [String] = []
+            for shot in shots { words += Vocabulary.identifiers(in: await screenText(of: shot)) }
+            stt.sessionWords = words
+        }
+        let take = await stt.finish(expectSpeech: heardSpeech)
+        let spoken = take.text
+        audio = take.audio
+        guard !closed else { return false }
+        guard let final = spoken else {
             // Keep the card: ask for a repeat and listen again.
             trace("card: transcription failed twice, asking to repeat")
             NSSound(named: "Basso")?.play()
@@ -506,16 +529,22 @@ final class CardModel {
     }
 
     func submit() {
-        guard !finishing, !copied else { return }
+        guard !finishing, !copied, !closed else { return }
         Task {
-            guard await finishTake() else { return }
-            var pngs: [Data] = []
-            for shot in shots {
-                guard let png = Output.render(shot.image, strokes: shot.strokes, lineWidth: Stroke.width / fitScale(for: shot.image)) else {
-                    failure = "Couldn't render the screenshot."
-                    return
+            guard await finishTake(), !closed else { return }
+            // Full-resolution drawing and PNG encoding take a while on a 5K shot: not on the main thread.
+            let jobs = shots.map { ($0.image, $0.strokes, Stroke.width / fitScale(for: $0.image)) }
+            let rendered: [Data]? = await Task.detached(priority: .userInitiated) {
+                var out: [Data] = []
+                for (image, strokes, width) in jobs {
+                    guard let png = Output.render(image, strokes: strokes, lineWidth: width) else { return nil }
+                    out.append(png)
                 }
-                pngs.append(png)
+                return out
+            }.value
+            guard let pngs = rendered else {
+                failure = "Couldn't render the screenshot."
+                return
             }
             do {
                 let mode = OCR.Mode.current
@@ -525,8 +554,10 @@ final class CardModel {
                 // The clip shows the same region as its first frame, so that shot's blur boxes cover every frame.
                 let clipBlurs = clip != nil && shots.first?.image === clip?.frames.first
                     ? shots[0].strokes.filter { $0.kind == .blur } : []
+                guard !closed else { return } // Esc while it was being read: nothing lands on the clipboard
                 let saved = try Output.deliver(pngs: pngs, note: text, context: context?.line, screenTexts: screenTexts,
-                                               clip: clip, clipBlurs: clipBlurs, textOnly: textOnly)
+                                               clip: clip, clipBlurs: clipBlurs, textOnly: textOnly,
+                                               audio: audio)
                 trace("card: delivered \(saved.map(\.lastPathComponent)), text only=\(textOnly)")
             } catch {
                 failure = "Couldn't save: \(error.localizedDescription)"
@@ -535,6 +566,7 @@ final class CardModel {
             copied = true
             NSSound(named: "Pop")?.play()
             try? await Task.sleep(for: .milliseconds(450))
+            closed = true
             close()
         }
     }
@@ -551,6 +583,7 @@ final class CardModel {
     func cancel() {
         stopRecording()
         stt.cancel()
+        closed = true
         close()
     }
 
@@ -588,22 +621,7 @@ final class CardModel {
             }
             current?.points.append(point)
         case .erase:
-            // Cut out only the points under the eraser, splitting strokes into the pieces that remain.
-            let radius = Self.eraserRadius / pointsPerImagePoint
-            strokes = strokes.flatMap { stroke -> [Stroke] in
-                guard stroke.kind == .pen else { return stroke.touches(point, radius: radius) ? [] : [stroke] }
-                var pieces: [Stroke] = []
-                var run: [CGPoint] = []
-                for p in stroke.points {
-                    if hypot(p.x - point.x, p.y - point.y) * pointsPerImagePoint <= Self.eraserRadius {
-                        if !run.isEmpty { pieces.append(Stroke(points: run)); run = [] }
-                    } else {
-                        run.append(p)
-                    }
-                }
-                if !run.isEmpty { pieces.append(Stroke(points: run)) }
-                return pieces
-            }
+            strokes = Stroke.erase(strokes, at: point, radius: Self.eraserRadius / pointsPerImagePoint)
         }
     }
 
@@ -613,7 +631,7 @@ final class CardModel {
         if let stroke = current, stroke.kind == .pen || stroke.rect.width + stroke.rect.height > 6 / pointsPerImagePoint {
             strokes.append(stroke)
         } else if current != nil {
-            history.removeLast()
+            _ = history.popLast() // ⌘Z mid-drag may already have taken it
         }
         current = nil
         if tool == .erase, history.last?.flatMap(\.points).count == strokes.flatMap(\.points).count,

@@ -28,8 +28,13 @@ final class DictationBar {
             panel.setFrameOrigin(NSPoint(x: visible.midX - panel.frame.width / 2,
                                          y: visible.minY + visible.height * 0.16))
         }
+        var closed = false
         model.close = { [panel] in
+            guard !closed else { return }
+            closed = true
             panel.orderOut(nil)
+            // Break panel → view → model → this closure → panel, so each take is freed.
+            DispatchQueue.main.async { panel.contentView = nil }
             onClose()
         }
         // Stays non-key: the point is not to steal focus from what you're typing into.
@@ -57,6 +62,9 @@ final class DictationModel {
     var tidying = false
     var done = false
     var failure: String?
+    var pasted: Bool { autoPaste }
+    /// Cancelled, finished or never started: a mic that comes up late closes straight away.
+    private var over = false
     var levels = [Float](repeating: 0, count: 96)
     var startedAt = Date()
     private var loudBuffers = 0
@@ -90,11 +98,15 @@ final class DictationModel {
         let recorder = self.recorder
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                try recorder.start(device: mic) { samples, level in
+                try await recorder.start(device: mic) { samples, level in
                     Task { @MainActor in self?.receive(samples, level) }
                 }
                 trace("dictation: mic engine started on \(mic.name)")
-                await MainActor.run { self?.recording = true }
+                await MainActor.run {
+                    // Let go (or a shortcut) before the device opened: don't leave it on.
+                    guard let self, !self.over else { return recorder.stop() }
+                    self.recording = true
+                }
             } catch {
                 trace("dictation: mic start threw \(error)")
                 await MainActor.run { self?.failure = "Couldn't open \(mic.name)." }
@@ -103,8 +115,13 @@ final class DictationModel {
     }
 
     private func receive(_ samples: [Float], _ level: Float) {
-        levels.removeFirst()
-        levels.append(level)
+        guard recording else { return }
+        levels = Array(levels.dropFirst()) + [level] // one change per buffer, not two
+        // Same cap as the card: a key-up that never arrives must not leave an open mic.
+        if Date().timeIntervalSince(startedAt) > CardModel.maxTake {
+            trace("dictation: reached \(Int(CardModel.maxTake)) s, finishing")
+            finish()
+        }
         buffers += 1
         peak = max(peak, level)
         if level > 0.57 { loudBuffers += 1 }
@@ -112,14 +129,23 @@ final class DictationModel {
     }
 
     func finish() {
-        guard !finishing, !done else { return }
-        finishing = true
+        guard !finishing, !done, !over else { return }
+        over = true
         recorder.stop()
         recording = false
         trace("dictation: released after \(buffers) buffers, peak level \(peak), loud \(loudBuffers)")
+        // No mic (or no permission): keep saying why instead of "didn't catch that".
+        if failure != nil {
+            stt.cancel()
+            Task { try? await Task.sleep(for: .seconds(1.5)); close() }
+            return
+        }
+        finishing = true
         Task {
-            let spoken = await stt.finish(expectSpeech: heardSpeech)
+            let take = await stt.finish(expectSpeech: heardSpeech)
+            let spoken = take.text, audio = take.audio
             finishing = false
+            guard !cancelled else { return }
             guard let spoken, !spoken.isEmpty else {
                 failure = "Didn't catch that. Hold again and say it once more."
                 trace("dictation: nothing transcribed")
@@ -131,8 +157,9 @@ final class DictationModel {
             tidying = true
             let note = await AppModel.shared.tidy.rewrite(spoken) ?? spoken
             tidying = false
+            guard !cancelled else { return }
             text = note
-            Output.deliver(text: note)
+            Output.deliver(text: note, audio: audio, pasting: autoPaste)
             done = true
             trace("dictation: delivered \(spoken.count) chars, paste=\(autoPaste)")
             NSSound(named: "Pop")?.play()
@@ -146,7 +173,11 @@ final class DictationModel {
         }
     }
 
+    private var cancelled = false
+
     func cancel() {
+        over = true
+        cancelled = true
         recorder.stop()
         recording = false
         stt.cancel()
@@ -183,7 +214,7 @@ struct DictationView: View {
                 .frame(minWidth: 220, alignment: .leading)
 
             if model.done {
-                Label("Pasted", systemImage: "checkmark")
+                Label(model.pasted ? "Pasted" : "Copied", systemImage: "checkmark")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.glacier)
             }

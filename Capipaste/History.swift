@@ -8,6 +8,12 @@ enum History {
         let text: String
         var id: URL { note }
 
+        /// The voice recording beside the note, while Settings keeps it.
+        var audio: URL? {
+            let url = note.deletingPathExtension().appendingPathExtension("m4a")
+            return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        }
+
         /// First line of what was said, or a stand-in when there was no note.
         var title: String {
             let first = text.components(separatedBy: "\n").first ?? ""
@@ -24,9 +30,12 @@ enum History {
         }
     }
 
-    static func save(_ text: String, besides png: URL) {
-        let name = png.deletingPathExtension().lastPathComponent.replacingOccurrences(of: " (1)", with: "")
-        try? text.write(to: png.deletingLastPathComponent().appendingPathComponent(name + ".txt"), atomically: true, encoding: .utf8)
+    @discardableResult
+    static func save(_ text: String, besides file: URL) -> URL {
+        let name = file.deletingPathExtension().lastPathComponent.replacingOccurrences(of: " (1)", with: "")
+        let note = file.deletingLastPathComponent().appendingPathComponent(name + ".txt")
+        do { try text.write(to: note, atomically: true, encoding: .utf8) } catch { trace("history: couldn't save \(note.lastPathComponent): \(error)") }
+        return note
     }
 
     static func recent(_ limit: Int = 10) -> [Entry] {
