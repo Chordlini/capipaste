@@ -14,11 +14,14 @@ struct Waveform: View {
             let rows = max(Int((size.height / 2 - dot / 2) / (dot + gap)), 1)
             let shown = Array(levels.suffix(max(Int(size.width / 4), 1)))
             let columnWidth = size.width / CGFloat(shown.count)
+            // Drawn above the quietest of the last ~3 s, so a room's hiss shows as the bare centre line.
+            let floor = levels.suffix(30).filter { $0 > 0 }.min() ?? 0
             var lit = Path()
             var faint = Path()
             for (column, level) in shown.enumerated() {
                 let x = columnWidth * (CGFloat(column) + 0.5)
-                let reach = live ? Int((Double(level) * Double(rows)).rounded()) : -1
+                let lifted = level > 0 ? max(level - floor, 0) / max(1 - floor, 0.01) : 0
+                let reach = live ? Int((Double(lifted) * Double(rows)).rounded()) : -1
                 for row in -rows...rows {
                     let y = size.height / 2 + CGFloat(row) * (dot + gap)
                     let rect = CGRect(x: x - dot / 2, y: y - dot / 2, width: dot, height: dot)

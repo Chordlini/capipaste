@@ -106,30 +106,56 @@ final class Recorder: @unchecked Sendable {
     /// Whoever has the tap on the warm engine; a second recorder takes it over instead of double-tapping.
     private static weak var owner: Recorder?
     private var engine: AVAudioEngine?
+    private var mic: DeviceInput?
     private var observer: NSObjectProtocol?
     private var device: AudioInput?
     private var onAudio: (@Sendable ([Float], Float) -> Void)?
     private var reopens = 0
 
     /// Turning on voice processing costs ~0.7 s, so do it off the hotkey path. Doesn't open the mic.
-    static func prewarm() { queue.async { _ = try? voiceEngine() } }
+    static func prewarm() { queue.async { if owner == nil { _ = try? voiceEngine() } } }
 
-    /// The default input changed (`force` after sleep): the ready engine may point at a stale device or rate.
-    /// Only a real change rebuilds it: voice processing adds a hidden device of its own, and rebuilding on
-    /// every device-list change looped, starving the mic and stuttering playback.
+    /// The default input or output changed (`force` after sleep): the ready engine may point at a stale device
+    /// or rate, or a headset just arrived. Only a real change rebuilds it: voice processing adds a hidden device
+    /// of its own, and rebuilding on every device-list change looped, starving the mic and stuttering playback.
     static func invalidate(force: Bool = false) {
         queue.async {
-            guard owner == nil, let current = warm, force || current.device != defaultInputID() else { return }
-            warm = nil
+            guard owner == nil else { return }
+            if force { drop() }
             _ = try? voiceEngine()
         }
     }
 
+    /// A Bluetooth headset as default input or output. Voice processing opens the default mic and uses the
+    /// output for echo cancelling, which holds the headset in call mode (mono, muffled playback) the whole
+    /// time the ready engine exists, even when you record from the built-in mic. So no noise suppression then.
+    private static func bluetoothInvolved() -> Bool {
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        return [kAudioHardwarePropertyDefaultInputDevice, kAudioHardwarePropertyDefaultOutputDevice].contains { selector in
+            guard let id: AudioDeviceID = AudioInput.property(system, selector) else { return false }
+            let transport: UInt32 = AudioInput.property(id, kAudioDevicePropertyTransportType) ?? 0
+            return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
+        }
+    }
+
+    /// Lets go of the ready engine and the devices voice processing holds open.
+    private static func drop() {
+        guard let engine = warm?.engine else { return }
+        warm = nil
+        engine.stop()
+        try? engine.inputNode.setVoiceProcessingEnabled(false)
+    }
+
     // ponytail: one cached engine, rebuilt when the default input changes
     private static func voiceEngine() throws -> AVAudioEngine {
+        guard !bluetoothInvolved() else {
+            if warm != nil { trace("recorder: Bluetooth headset in use, released voice processing") }
+            drop()
+            throw RecorderError.bluetooth
+        }
         let device = defaultInputID()
         if let warm, warm.device == device { return warm.engine }
-        warm = nil
+        drop()
         let began = Date()
         defer { trace("recorder: voice processing ready in \(Int(Date().timeIntervalSince(began) * 1000)) ms") }
         let engine = AVAudioEngine()
@@ -171,20 +197,20 @@ final class Recorder: @unchecked Sendable {
         close()
         // Voice processing (noise suppression) only runs on the system default input: pointing it at another
         // device fails to initialize (-10875) and can hang the next start. Other mics record raw.
-        let suppress = device == nil || device?.id == Self.defaultInputID()
+        let suppress = (device == nil || device?.id == Self.defaultInputID()) && !Self.bluetoothInvolved()
         do {
             try open(suppress: suppress)
         } catch where suppress {
             // The ready engine may be stale (sleep, a sample-rate change): build it fresh once, then go raw.
             trace("recorder: voice processing start failed (\(error)), rebuilding")
             close()
-            Self.warm = nil
+            Self.drop()
             do {
                 try open(suppress: true)
             } catch {
                 trace("recorder: voice processing failed again (\(error)), recording raw")
                 close()
-                Self.warm = nil
+                Self.drop()
                 try open(suppress: false)
             }
         }
@@ -192,6 +218,20 @@ final class Recorder: @unchecked Sendable {
 
     private func open(suppress: Bool) throws {
         guard let onAudio else { return } // stopped before it got here
+        if !suppress, let device {
+            // A picked mic opens on its own. AVAudioEngine's input node opens the system default input first,
+            // and when that's a Bluetooth headset it flips it to call mode before the switch to your mic lands.
+            // The id can go stale when a device reconnects; the uid doesn't.
+            let id = AudioInput.all().first(where: { $0.uid == device.uid })?.id ?? device.id
+            let began = Date()
+            let mic = try DeviceInput(device: id)
+            self.mic = mic // set before start so close() can clean up a failed start
+            try mic.start(Self.pipe(from: mic.format, to: onAudio) { [weak self, weak mic] in
+                Self.queue.async { self?.reopen(mic, because: "the mic is delivering only zeros") }
+            })
+            trace("recorder: \(device.name) opened in \(Int(Date().timeIntervalSince(began) * 1000)) ms (raw, \(Int(mic.format.sampleRate)) Hz)")
+            return
+        }
         let engine: AVAudioEngine
         if suppress {
             engine = try Self.voiceEngine()
@@ -201,42 +241,15 @@ final class Recorder: @unchecked Sendable {
             }
             Self.owner = self
         } else {
-            // Raw: fresh engine per session so device switches always apply.
-            engine = AVAudioEngine()
-            // The id can go stale when a device reconnects; the uid doesn't.
-            if let device, let unit = engine.inputNode.audioUnit {
-                var id = AudioInput.all().first(where: { $0.uid == device.uid })?.id ?? device.id
-                let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
-                                                  &id, UInt32(MemoryLayout<AudioDeviceID>.size))
-                guard status == noErr else { throw RecorderError.deviceRefused(status) }
-            }
+            engine = AVAudioEngine() // no mic picked: the system default, fresh per session
         }
         let input = engine.inputNode
         let inFormat = input.outputFormat(forBus: 0)
-        guard inFormat.sampleRate > 0,
-              let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false),
-              let converter = AVAudioConverter(from: inFormat, to: outFormat)
-        else { throw RecorderError.noInput }
-        converter.channelMap = [0] // voice processing hands back 9 channels; without this the mono downmix is silent
-
-        let silence = SilenceWatch()
-        input.removeTap(onBus: 0) // never two taps on one bus: AVAudioEngine throws an exception for that
-        input.installTap(onBus: 0, bufferSize: 1024, format: inFormat) { [weak self, weak engine] buffer, _ in
-            let capacity = AVAudioFrameCount(Double(buffer.frameLength) * 16_000 / inFormat.sampleRate) + 16
-            guard let out = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: capacity) else { return }
-            var fed = false
-            converter.convert(to: out, error: nil) { _, status in
-                if fed { status.pointee = .noDataNow; return nil }
-                fed = true
-                status.pointee = .haveData
-                return buffer
-            }
-            guard let data = out.floatChannelData?[0], out.frameLength > 0 else { return }
-            let samples = Array(UnsafeBufferPointer(start: data, count: Int(out.frameLength)))
-            let rms = (samples.reduce(0) { $0 + $1 * $1 } / Float(samples.count)).squareRoot()
-            if silence.stuck(rms) { Self.queue.async { self?.reopen(engine, because: "the mic is delivering only zeros") } }
-            onAudio(samples, Self.level(rms: rms))
+        let deliver = try Self.pipe(from: inFormat, to: onAudio) { [weak self, weak engine] in
+            Self.queue.async { self?.reopen(engine, because: "the mic is delivering only zeros") }
         }
+        input.removeTap(onBus: 0) // never two taps on one bus: AVAudioEngine throws an exception for that
+        input.installTap(onBus: 0, bufferSize: 1024, format: inFormat) { buffer, _ in deliver(buffer) }
         self.engine = engine // set before start so close() can clean up a failed start
         // Unplugged AirPods, a new default input or a sample-rate change stop the engine: open it again.
         observer = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine,
@@ -254,12 +267,40 @@ final class Recorder: @unchecked Sendable {
         trace("recorder: engine started in \(Int(Date().timeIntervalSince(began) * 1000)) ms (\(suppress ? "noise suppression" : "raw"), \(Int(inFormat.sampleRate)) Hz × \(inFormat.channelCount))")
     }
 
+    /// Turns the device's buffers into 16 kHz mono samples plus a level; `stuck` fires once on ~1 s of zeros.
+    private static func pipe(from inFormat: AVAudioFormat, to onAudio: @escaping @Sendable ([Float], Float) -> Void,
+                             stuck: @escaping () -> Void) throws -> (AVAudioPCMBuffer) -> Void {
+        guard inFormat.sampleRate > 0,
+              let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: inFormat, to: outFormat)
+        else { throw RecorderError.noInput }
+        converter.channelMap = [0] // voice processing hands back 9 channels; without this the mono downmix is silent
+        let silence = SilenceWatch()
+        var hum = HumFilter()
+        return { buffer in
+            let capacity = AVAudioFrameCount(Double(buffer.frameLength) * 16_000 / inFormat.sampleRate) + 16
+            guard let out = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: capacity) else { return }
+            var fed = false
+            converter.convert(to: out, error: nil) { _, status in
+                if fed { status.pointee = .noDataNow; return nil }
+                fed = true
+                status.pointee = .haveData
+                return buffer
+            }
+            guard let data = out.floatChannelData?[0], out.frameLength > 0 else { return }
+            let samples = Array(UnsafeBufferPointer(start: data, count: Int(out.frameLength)))
+            let rms = (samples.reduce(0) { $0 + $1 * $1 } / Float(samples.count)).squareRoot()
+            if silence.stuck(rms) { stuck() }
+            onAudio(samples, Self.level(rms: hum.rms(samples)))
+        }
+    }
+
     /// The same take on a freshly opened device, a couple of times at most.
-    private func reopen(_ stale: AVAudioEngine?, because reason: String) {
-        guard let stale, stale === engine, onAudio != nil, reopens < 3 else { return }
+    private func reopen(_ stale: AnyObject?, because reason: String) {
+        guard let stale, stale === (engine ?? mic), onAudio != nil, reopens < 3 else { return }
         reopens += 1
         trace("recorder: reopening, \(reason)")
-        if Self.warm?.engine === stale { Self.warm = nil }
+        if Self.warm?.engine === stale { Self.drop() }
         do { try open() } catch { trace("recorder: reopen failed \(error)") }
     }
 
@@ -269,6 +310,8 @@ final class Recorder: @unchecked Sendable {
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop()
         engine = nil
+        mic?.stop()
+        mic = nil
         if Self.owner === self { Self.owner = nil }
     }
 
@@ -279,7 +322,29 @@ final class Recorder: @unchecked Sendable {
         return min(max((20 * log10(max(rms, 1e-6)) + 60) / 60, 0), 1)
     }
 
-    enum RecorderError: Error { case noInput, deviceRefused(OSStatus) }
+    enum RecorderError: Error { case noInput, deviceRefused(OSStatus), bluetooth }
+}
+
+/// The meter's level without mains hum. With no voice processing (a picked mic, a Bluetooth headset on) the
+/// built-in mic carries ~120–180 Hz hum around -24 dB, which kept the meter half full and every buffer "loud"
+/// in silence. A 300 Hz high-pass drops that floor to about -38 dB; speech sits above it. Samples aren't touched.
+struct HumFilter {
+    private var x1: Float = 0, x2: Float = 0, y1: Float = 0, y2: Float = 0
+    // RBJ biquad high-pass, 300 Hz, Q 0.707, at 16 kHz.
+    private static let (b0, b1, b2, a1, a2): (Float, Float, Float, Float, Float) = {
+        let w = 2 * Float.pi * 300 / 16_000, alpha = sin(w) / (2 * 0.707), c = cos(w), a0 = 1 + alpha
+        return ((1 + c) / 2 / a0, -(1 + c) / a0, (1 + c) / 2 / a0, -2 * c / a0, (1 - alpha) / a0)
+    }()
+
+    mutating func rms(_ samples: [Float]) -> Float {
+        var sum: Float = 0
+        for x in samples {
+            let y = Self.b0 * x + Self.b1 * x1 + Self.b2 * x2 - Self.a1 * y1 - Self.a2 * y2
+            (x2, x1, y2, y1) = (x1, x, y1, y)
+            sum += y * y
+        }
+        return samples.isEmpty ? 0 : (sum / Float(samples.count)).squareRoot()
+    }
 }
 
 /// A device that opens fine but hands over nothing but exact zeros (the voice-processing downmix bug,
@@ -296,4 +361,86 @@ final class SilenceWatch: @unchecked Sendable {
         if zeros >= 16 { reported = true }
         return reported
     }
+}
+
+/// One specific mic through a bare HAL unit: only that device opens, the system default is never touched.
+final class DeviceInput: @unchecked Sendable {
+    let format: AVAudioFormat
+    private var unit: AudioUnit?
+    private var deliver: ((AVAudioPCMBuffer) -> Void)?
+    // ponytail: one buffer reused per callback; HAL slices are ≤ 4096 frames by default
+    private let buffer: AVAudioPCMBuffer
+    /// The HAL hands over ~10 ms slices; the meter moves one dot per delivery, so they go out ~100 ms at a time
+    /// like AVAudioEngine's.
+    private let chunk: AVAudioPCMBuffer
+
+    init(device: AudioDeviceID) throws {
+        var description = AudioComponentDescription(componentType: kAudioUnitType_Output, componentSubType: kAudioUnitSubType_HALOutput,
+                                                    componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0)
+        var made: AudioUnit?
+        guard let component = AudioComponentFindNext(nil, &description),
+              AudioComponentInstanceNew(component, &made) == noErr, let unit = made
+        else { throw Recorder.RecorderError.noInput }
+        self.unit = unit
+        func set<T>(_ property: AudioUnitPropertyID, _ scope: AudioUnitScope, _ bus: AudioUnitElement, _ value: T) throws {
+            var value = value
+            let status = AudioUnitSetProperty(unit, property, scope, bus, &value, UInt32(MemoryLayout<T>.size))
+            guard status == noErr else { AudioComponentInstanceDispose(unit); throw Recorder.RecorderError.deviceRefused(status) }
+        }
+        try set(kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, UInt32(1))  // bus 1 is the mic
+        try set(kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0, UInt32(0)) // no speaker side
+        try set(kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, device)
+        var hardware = AudioStreamBasicDescription()
+        var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        // The HAL unit can't resample: take the device's own rate, as one float channel.
+        guard AudioUnitGetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 1, &hardware, &size) == noErr,
+              hardware.mSampleRate > 0,
+              let format = AVAudioFormat(standardFormatWithSampleRate: hardware.mSampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8192),
+              let chunk = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(hardware.mSampleRate / 10) + 8192)
+        else { AudioComponentInstanceDispose(unit); throw Recorder.RecorderError.noInput }
+        self.format = format
+        self.buffer = buffer
+        self.chunk = chunk
+        try set(kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, format.streamDescription.pointee)
+    }
+
+    func start(_ deliver: @escaping (AVAudioPCMBuffer) -> Void) throws {
+        guard let unit else { throw Recorder.RecorderError.noInput }
+        self.deliver = deliver
+        var callback = AURenderCallbackStruct(inputProc: { context, flags, time, bus, frames, _ in
+            Unmanaged<DeviceInput>.fromOpaque(context).takeUnretainedValue().pull(flags, time, bus, frames)
+        }, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
+        var status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0,
+                                          &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
+        if status == noErr { status = AudioUnitInitialize(unit) }
+        if status == noErr { status = AudioOutputUnitStart(unit) }
+        guard status == noErr else { throw Recorder.RecorderError.deviceRefused(status) }
+    }
+
+    private func pull(_ flags: UnsafeMutablePointer<AudioUnitRenderActionFlags>, _ time: UnsafePointer<AudioTimeStamp>,
+                      _ bus: UInt32, _ frames: UInt32) -> OSStatus {
+        guard let unit, frames <= buffer.frameCapacity else { return noErr }
+        buffer.frameLength = frames
+        let status = AudioUnitRender(unit, flags, time, bus, frames, buffer.mutableAudioBufferList)
+        guard status == noErr, let from = buffer.floatChannelData?[0], let to = chunk.floatChannelData?[0] else { return status }
+        (to + Int(chunk.frameLength)).update(from: from, count: Int(frames))
+        chunk.frameLength += frames
+        if Double(chunk.frameLength) >= format.sampleRate / 10 {
+            deliver?(chunk)
+            chunk.frameLength = 0
+        }
+        return status
+    }
+
+    /// Stops and frees the unit; the callback can't fire after this returns.
+    func stop() {
+        guard let unit else { return }
+        self.unit = nil
+        AudioOutputUnitStop(unit)
+        AudioUnitUninitialize(unit)
+        AudioComponentInstanceDispose(unit)
+    }
+
+    deinit { stop() }
 }

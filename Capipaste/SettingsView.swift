@@ -185,28 +185,45 @@ private struct TidySettings: View {
 
     var body: some View {
         Section("Tidy") {
-            Toggle("Tidy spoken notes before pasting", isOn: $tidy.enabled)
-            Text("Drops the ums and false starts and turns what you said into one clear instruction. Runs on your Mac. \(tidy.status)")
+            Picker("Tidy spoken notes", selection: $tidy.level) {
+                Text("Off").tag(Tidy.Level.off)
+                Text("Light").tag(Tidy.Level.light)
+                Text("Rewrite").tag(Tidy.Level.rewrite)
+            }
+            .pickerStyle(.segmented)
+            Text(caption)
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Local model: Qwen 3.5 2B")
-                    Text("1.7 GB. Only used when Apple Intelligence is off.").font(.callout).foregroundStyle(.secondary)
-                }
-                Spacer()
-                if let progress = tidy.progress {
-                    ProgressView(value: progress).frame(width: 90)
-                } else if tidy.localReady {
-                    Button(role: .destructive) { tidy.deleteLocal() } label: { Image(systemName: "trash") }
-                        .buttonStyle(.borderless)
-                } else {
-                    Button("Download") { tidy.downloadLocal() }
-                }
+            if tidy.level == .rewrite { model }
+        }
+    }
+
+    private var caption: String {
+        switch tidy.level {
+        case .off: "Pastes exactly what you said."
+        case .light: "Drops um, uh and ah, and a word or phrase you said twice in a row. Your words stay as they are. Instant."
+        case .rewrite: "Also turns what you said into one clear instruction with a language model. May reword. \(tidy.status)"
+        }
+    }
+
+    @ViewBuilder private var model: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Local model: Qwen 3.5 2B")
+                Text("1.7 GB. Only used when Apple Intelligence is off.").font(.callout).foregroundStyle(.secondary)
             }
-            if let problem = tidy.problem {
-                Text(problem).font(.callout).foregroundStyle(Color.ink)
+            Spacer()
+            if let progress = tidy.progress {
+                ProgressView(value: progress).frame(width: 90)
+            } else if tidy.localReady {
+                Button(role: .destructive) { tidy.deleteLocal() } label: { Image(systemName: "trash") }
+                    .buttonStyle(.borderless)
+            } else {
+                Button("Download") { tidy.downloadLocal() }
             }
+        }
+        if let problem = tidy.problem {
+            Text(problem).font(.callout).foregroundStyle(Color.ink)
         }
     }
 }

@@ -131,6 +131,16 @@ final class DictationModel {
     func finish() {
         guard !finishing, !done, !over else { return }
         over = true
+        // People let go of the key on their last word: keep listening a moment so it isn't cut off ("blue" → "bl").
+        // ponytail: fixed 300 ms tail; stop on trailing silence instead if this feels slow
+        Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !cancelled else { return }
+            stopAndDeliver()
+        }
+    }
+
+    private func stopAndDeliver() {
         recorder.stop()
         recording = false
         trace("dictation: released after \(buffers) buffers, peak level \(peak), loud \(loudBuffers)")

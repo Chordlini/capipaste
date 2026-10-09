@@ -13,6 +13,30 @@ enum TidyRules {
         return result
     }
 
+    /// Light tidy: drops ums and ahs and a phrase said twice in a row. Never rewords anything.
+    static func light(_ text: String) -> String {
+        var text = text.replacingOccurrences(of: #"(?i),?\s*\b(u+m+|u+h+m*|e+r+m+|e+r+|a+h+|a+w+|h+m+|m{2,})\b,?"#,
+                                             with: " ", options: .regularExpression)
+        var words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        let key = { (w: String) in w.lowercased().trimmingCharacters(in: .punctuationCharacters) }
+        // ponytail: also collapses intended doubles ("very very", "had had"); add an allowlist if that bites
+        var i = 0
+        while i < words.count {
+            var dropped = false
+            for n in stride(from: min(4, (words.count - i) / 2), through: 1, by: -1)
+            where (0..<n).allSatisfy({ key(words[i + $0]) == key(words[i + n + $0]) }) && !key(words[i]).isEmpty {
+                words.removeSubrange(i..<i + n) // keep the second copy, it carries the trailing punctuation
+                dropped = true
+                break
+            }
+            if !dropped { i += 1 }
+        }
+        text = words.joined(separator: " ")
+            .replacingOccurrences(of: #"\s+([,.?!])"#, with: "$1", options: .regularExpression)
+            .replacingOccurrences(of: #"^[,.\s]+"#, with: "", options: .regularExpression)
+        return text.replacing(try! Regex(#"(^|[.?!]\s+)[a-z]"#)) { $0.output[0].substring!.uppercased() } // a dropped "Ah," leaves "and" opening a sentence
+    }
+
     static func numbers(in text: String) -> Set<String> {
         Set(text.split(whereSeparator: { !$0.isNumber }).map(String.init))
     }

@@ -19,6 +19,10 @@ check(TidyRules.accept("  ", for: note) == nil, "empty")
 check(TidyRules.accept("<think>port 3000 hmm</think>\n\"The save button on port 3000 is grey; make it blue.\"", for: note)
       == "The save button on port 3000 is grey; make it blue.", "reasoning and quotes stripped")
 check(TidyRules.numbers(in: "v2.10 at 3:45") == ["2", "10", "3", "45"], "numbers")
+check(TidyRules.light("um so I want I want to uh fix the the AWS bucket on port 3000") == "So I want to fix the AWS bucket on port 3000.".dropLast(), "light: fillers and repeats")
+check(TidyRules.light("Make it, um, blue. Ah, and bigger, hmm.") == "Make it blue. And bigger.", "light: filler commas")
+check(TidyRules.light("The save button is grey.") == "The save button is grey.", "light: clean note untouched")
+check(TidyRules.light("um uh") == "", "light: all filler")
 print("tidy rules ok")
 
 // MARK: Meter and stuck-mic detection
@@ -149,3 +153,13 @@ MainActor.assumeIsolated {
 }
 print("paste restore ok")
 print("logic checks passed")
+
+// MARK: Hum filter keeps mains hum off the meter, speech on it
+do {
+    let tone = { (hz: Float) in (0..<1600).map { 0.06 * sin(2 * Float.pi * hz * Float($0) / 16_000) } }
+    var a = HumFilter(), b = HumFilter()
+    let hum = (0..<4).map { _ in a.rms(tone(120)) }.last!, voice = (0..<4).map { _ in b.rms(tone(1000)) }.last!
+    check(hum < 0.06 / Float(2).squareRoot() / 5, "120 Hz hum drops at least 14 dB")
+    check(voice > 0.06 / Float(2).squareRoot() * 0.9, "1 kHz speech passes")
+    print("hum filter ok")
+}

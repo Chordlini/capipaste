@@ -31,8 +31,11 @@ final class Tidy {
     Reply with the rewritten note only.
     """
 
-    var enabled = UserDefaults.standard.object(forKey: "tidy") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(enabled, forKey: "tidy") }
+    /// Off pastes what you said; light only drops ums and repeats; rewrite runs the model.
+    enum Level: String, CaseIterable { case off, light, rewrite }
+    var level = UserDefaults.standard.string(forKey: "tidyLevel").flatMap(Level.init)
+        ?? (UserDefaults.standard.object(forKey: "tidy") as? Bool == false ? .off : .light) {
+        didSet { UserDefaults.standard.set(level.rawValue, forKey: "tidyLevel") }
     }
     private(set) var localReady = UserDefaults.standard.bool(forKey: "tidyLocalReady") {
         didSet { UserDefaults.standard.set(localReady, forKey: "tidyLocalReady") }
@@ -70,7 +73,7 @@ final class Tidy {
 
     /// Loads the model while you're still talking, so the rewrite starts warm.
     func prewarm() {
-        guard enabled else { return }
+        guard level == .rewrite else { return }
         unloadTask?.cancel()
         switch engine {
         case .apple:
@@ -88,10 +91,16 @@ final class Tidy {
 
     func rewrite(_ note: String, screen: String = "") async -> String? {
         defer { if container != nil { unloadSoon() } } // also after short notes that skip the model
-        let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard enabled, note.split(separator: " ").count >= 4 else { return nil } // short notes are already tidy
+        guard level != .off else { return nil }
+        let heard = note
+        let note = TidyRules.light(note.trimmingCharacters(in: .whitespacesAndNewlines))
+        #if TESTHOOKS // test builds only: what you said never reaches the log of a day-to-day copy
+        trace("tidy: heard «\(heard)» light «\(note)» level=\(level)")
+        #endif
+        guard !note.isEmpty else { return nil } // all filler: keep what was heard
+        guard level == .rewrite, note.split(separator: " ").count >= 4 else { return note } // short notes are already tidy
         let engine = self.engine
-        guard engine != .none else { return nil }
+        guard engine != .none else { return note }
         var prompt = "Note: \(note)"
         // ponytail: the 2B local model gets confused by screen text, so it never sees it
         if engine != .local, !screen.isEmpty { prompt += "\n\nScreen text:\n\(screen.prefix(1500))" }
@@ -106,7 +115,10 @@ final class Tidy {
         }
         trace("tidy: \(engine) \(Int(Date().timeIntervalSince(started) * 1000)) ms, \(result == nil ? "kept raw note" : "rewrote")")
         guard let result = result.flatMap({ TidyRules.accept($0, for: note) })
-        else { trace("tidy: rewrite rejected, kept raw note"); return nil }
+        else { trace("tidy: rewrite rejected, kept light-tidied note"); return note }
+        #if TESTHOOKS
+        trace("tidy: rewrite «\(result)»")
+        #endif
         return result
     }
 

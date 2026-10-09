@@ -58,6 +58,7 @@ final class AppModel {
             Recorder.invalidate()
             Task { @MainActor in AppModel.shared.refreshMics() }
         }
+        AudioInput.watch(kAudioHardwarePropertyDefaultOutputDevice) { Recorder.invalidate() } // headphones on: release voice processing
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
             flushLog()
         }
