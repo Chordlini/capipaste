@@ -18,6 +18,8 @@ check(TidyRules.accept(String(repeating: "Invented detail. ", count: 20) + "3000
 check(TidyRules.accept("  ", for: note) == nil, "empty")
 check(TidyRules.accept("<think>port 3000 hmm</think>\n\"The save button on port 3000 is grey; make it blue.\"", for: note)
       == "The save button on port 3000 is grey; make it blue.", "reasoning and quotes stripped")
+check(TidyRules.accept("Please change the save control's colour to the brand blue on port 3000.", for: note) == nil, "paraphrase refused")
+check(TidyRules.accept("The save button, it's grey on port 3000 when it should be blue.", for: note) != nil, "own words kept")
 check(TidyRules.numbers(in: "v2.10 at 3:45") == ["2", "10", "3", "45"], "numbers")
 check(TidyRules.light("um so I want I want to uh fix the the AWS bucket on port 3000") == "So I want to fix the AWS bucket on port 3000.".dropLast(), "light: fillers and repeats")
 check(TidyRules.light("Make it, um, blue. Ah, and bigger, hmm.") == "Make it blue. And bigger.", "light: filler commas")

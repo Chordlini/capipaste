@@ -41,7 +41,7 @@ enum Cloud {
         var chatExtras: [String: Any] {
             switch self {
             case .openai: ["reasoning_effort": "none"]
-            case .groq: ["reasoning_effort": "low", "include_reasoning": false]
+            case .groq: ["reasoning_effort": "low", "include_reasoning": false, "temperature": 0] // same words every time
             }
         }
 

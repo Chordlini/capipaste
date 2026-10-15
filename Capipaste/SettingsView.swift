@@ -207,7 +207,7 @@ private struct TidySettings: View {
         switch tidy.level {
         case .off: "Pastes exactly what you said."
         case .light: "Drops um, uh and ah, and a word or phrase you said twice in a row. Your words stay as they are. Instant."
-        case .rewrite: "Also turns what you said into one clear instruction with a language model. May reword. \(tidy.status)"
+        case .rewrite: "Also fixes punctuation, grammar and your self-corrections with a language model, keeping your words. \(tidy.status)"
         }
     }
 

@@ -8,7 +8,8 @@ enum TidyRules {
         guard !result.isEmpty,
               result.count <= note.count * 2 + 60, // much longer than the note: it invented things
               result.count >= note.count / 4,      // much shorter: it dropped the point
-              numbers(in: note).isSubset(of: numbers(in: result)) // every number survives
+              numbers(in: note).isSubset(of: numbers(in: result)), // every number survives
+              ownWords(result, in: note) >= 0.8 // mostly the speaker's words, not a paraphrase
         else { return nil }
         return result
     }
@@ -35,6 +36,14 @@ enum TidyRules {
             .replacingOccurrences(of: #"\s+([,.?!])"#, with: "$1", options: .regularExpression)
             .replacingOccurrences(of: #"^[,.\s]+"#, with: "", options: .regularExpression)
         return text.replacing(try! Regex(#"(^|[.?!]\s+)[a-z]"#)) { $0.output[0].substring!.uppercased() } // a dropped "Ah," leaves "and" opening a sentence
+    }
+
+    /// Share of the rewrite's words that the speaker actually said.
+    // ponytail: bag-of-words, so a reorder passes; 0.8 leaves room for "it's"→"it is" and fixed punctuation
+    static func ownWords(_ rewrite: String, in note: String) -> Double {
+        let words = { (t: String) in t.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" }).map(String.init) }
+        let said = Set(words(note)), used = words(rewrite)
+        return used.isEmpty ? 0 : Double(used.filter(said.contains).count) / Double(used.count)
     }
 
     static func numbers(in text: String) -> Set<String> {
