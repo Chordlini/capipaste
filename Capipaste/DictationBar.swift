@@ -5,7 +5,7 @@ import SwiftUI
 @MainActor
 final class DictationBar {
     private let panel: KeyPanel
-    private let model: DictationModel
+    let model: DictationModel
 
     init(mic: AudioInput?, stt: STT, returnTo: NSRunningApplication?, autoPaste: Bool, onClose: @escaping () -> Void) {
         model = DictationModel(mic: mic, stt: stt, returnTo: returnTo, autoPaste: autoPaste)
