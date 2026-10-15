@@ -238,10 +238,13 @@ extension Output {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
         }
-        let folder = AppModel.capturesFolder
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let note = History.save(text, besides: folder.appendingPathComponent("Capipaste \(stamp(in: folder)).txt"))
-        Recordings.save(audio, besides: note)
+        // Off the main thread: the folder listing and the write mustn't hold up the ⌘V that follows.
+        Task.detached(priority: .utility) {
+            let folder = AppModel.capturesFolder
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let note = History.save(text, besides: folder.appendingPathComponent("Capipaste \(stamp(in: folder)).txt"))
+            Recordings.save(audio, besides: note)
+        }
     }
 
     /// Presses ⌘V in whatever app is frontmost. Needs Accessibility.
@@ -282,8 +285,19 @@ final class PasteSession: NSObject, NSPasteboardItemDataProvider {
 
     private init(text: String) {
         self.text = text
-        // Deep copy: the originals belong to the pasteboard and die with clearContents().
-        saved = (Self.board.pasteboardItems ?? []).map { item in
+        let early = Self.early
+        Self.early = nil
+        saved = early?.count == Self.board.changeCount ? early!.items : Self.copyItems()
+    }
+
+    /// Taken at key-down, so the deep copy (a big image can take a while) isn't on the paste path.
+    /// `start` copies again if the clipboard changed in between.
+    private static var early: (count: Int, items: [NSPasteboardItem])?
+    static func snapshot() { early = (board.changeCount, copyItems()) }
+
+    /// Deep copy: the originals belong to the pasteboard and die with clearContents().
+    private static func copyItems() -> [NSPasteboardItem] {
+        (board.pasteboardItems ?? []).map { item in
             let copy = NSPasteboardItem()
             for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
             return copy

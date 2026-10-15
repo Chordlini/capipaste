@@ -83,7 +83,7 @@ final class Tidy {
         case .local:
             Task { try? await loadLocal() }
             // A take that's thrown away (right-⌘ used for a shortcut) never reaches rewrite(): unload anyway.
-            unloadSoon(after: 90)
+            unloadSoon()
         case .cloud, .none:
             break
         }
@@ -158,15 +158,19 @@ final class Tidy {
         return loaded
     }
 
-    /// Frees the ~1.5 GB model 30 s after a take; the next key-down reloads it while you talk.
-    private func unloadSoon(after seconds: Double = 30) {
+    /// The first rewrite after a load is slow (~4.5 s vs ~0.1 s warm), so the model stays a while after a take.
+    // ponytail: ~1.5 GB stays resident for 5 min after each take; shorten on 8 GB Macs if memory pressure shows
+    static let idleUnload: Double = 300
+
+    /// Frees the model `idleUnload` s after a take; the next key-down reloads it while you talk.
+    private func unloadSoon() {
         unloadTask?.cancel()
         unloadTask = Task {
-            try? await Task.sleep(for: .seconds(seconds))
+            try? await Task.sleep(for: .seconds(Self.idleUnload))
             guard !Task.isCancelled, container != nil else { return }
             container = nil
             MLX.Memory.clearCache()
-            trace("tidy: unloaded after 30 s idle")
+            trace("tidy: unloaded after \(Int(Self.idleUnload)) s idle")
         }
     }
 

@@ -70,7 +70,10 @@ final class DictationModel {
     private var loudBuffers = 0
     private var buffers = 0
     private var peak: Float = 0
+    private var floor: Float = 1
+    private var quietSamples = 0
     private var heardSpeech: Bool { loudBuffers >= 8 }
+    private var releasedAt = Date()
 
     init(mic: AudioInput?, stt: STT, returnTo: NSRunningApplication?, autoPaste: Bool) {
         self.mic = mic
@@ -93,6 +96,7 @@ final class DictationModel {
         }
         stt.begin()
         AppModel.shared.tidy.prewarm()
+        if autoPaste { PasteSession.snapshot() }
         startedAt = .now
         loudBuffers = 0
         let recorder = self.recorder
@@ -125,25 +129,31 @@ final class DictationModel {
         buffers += 1
         peak = max(peak, level)
         if level > 0.57 { loudBuffers += 1 }
+        if level > 0 { floor = min(floor, level) }
+        // ponytail: "quiet" = under the quietest buffer this take + 0.1 (6 dB). In practice that's ~-54 dB, so a
+        // noisy room never counts as quiet and keeps the 300 ms tail (slower, never clipped); raise if that's common.
+        quietSamples = level < floor + 0.1 ? quietSamples + samples.count : 0
         stt.feed(samples)
     }
 
     func finish() {
         guard !finishing, !done, !over else { return }
         over = true
+        releasedAt = .now
         // People let go of the key on their last word: keep listening a moment so it isn't cut off ("blue" → "bl").
-        // ponytail: fixed 300 ms tail; stop on trailing silence instead if this feels slow
+        // Already ~150 ms (2400 samples) of quiet before the key-up: nothing left to catch, stop now.
+        let tail = quietSamples >= 2_400 ? 0 : 300
         Task {
-            try? await Task.sleep(for: .milliseconds(300))
+            if tail > 0 { try? await Task.sleep(for: .milliseconds(tail)) }
             guard !cancelled else { return }
-            stopAndDeliver()
+            stopAndDeliver(tail: tail)
         }
     }
 
-    private func stopAndDeliver() {
+    private func stopAndDeliver(tail: Int) {
         recorder.stop()
         recording = false
-        trace("dictation: released after \(buffers) buffers, peak level \(peak), loud \(loudBuffers)")
+        trace("dictation: released after \(buffers) buffers, tail \(tail) ms, peak level \(peak), loud \(loudBuffers)")
         // No mic (or no permission): keep saying why instead of "didn't catch that".
         if failure != nil {
             stt.cancel()
@@ -173,11 +183,14 @@ final class DictationModel {
             done = true
             trace("dictation: delivered \(spoken.count) chars, paste=\(autoPaste)")
             NSSound(named: "Pop")?.play()
-            returnTo?.activate()
+            // The bar never takes focus, so usually you're still there: only switch back (and wait) if not.
+            let away = returnTo.map { $0 != NSWorkspace.shared.frontmostApplication } ?? false
+            if away { returnTo?.activate() }
             if autoPaste {
-                try? await Task.sleep(for: .milliseconds(70))
+                if away { try? await Task.sleep(for: .milliseconds(70)) }
                 Output.paste()
             }
+            trace("dictation: key-up to \(autoPaste ? "⌘V" : "copy") \(Int(Date().timeIntervalSince(releasedAt) * 1000)) ms")
             try? await Task.sleep(for: .milliseconds(220))
             close()
         }

@@ -144,6 +144,23 @@ MainActor.assumeIsolated {
     spin(0.9) // never read (no Accessibility, or no text field)
     check(board.string(forType: .string) == "nobody pasted this", "unread: the note stays on the clipboard")
 
+    copy("copied before the key went down")
+    PasteSession.snapshot()
+    copy("copied while you talked") // snapshot is stale now: start must copy again
+    PasteSession.start("early snapshot note")
+    PasteSession.current?.pasted()
+    _ = board.string(forType: .string)
+    spin(0.5)
+    check(board.string(forType: .string) == "copied while you talked", "a stale early snapshot isn't what comes back")
+
+    copy("copied before the key went down")
+    PasteSession.snapshot()
+    PasteSession.start("early snapshot note")
+    PasteSession.current?.pasted()
+    _ = board.string(forType: .string)
+    spin(0.5)
+    check(board.string(forType: .string) == "copied before the key went down", "the early snapshot is restored")
+
     board.clearContents()
     PasteSession.start("into an empty clipboard")
     PasteSession.current?.pasted()
