@@ -267,13 +267,20 @@ final class AppModel {
             settings
                 ? AnyView(SettingsView().environment(self).environment(stt).environment(permissions).environment(updater))
                 : AnyView(MenuView().environment(self).environment(stt).environment(permissions)))
+        // A live hosting view (not ImageRenderer) so onAppear state, like recent notes, is laid out before the shot.
+        // `-menudark` renders in dark mode; the window background stands in for the panel's material.
+        let hosting = NSHostingView(rootView: view.background(Color(nsColor: .windowBackgroundColor)))
+        let window = NSWindow(contentRect: .init(x: -4000, y: 0, width: 320, height: 200), styleMask: .borderless, backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: args.contains("-menudark") ? .darkAqua : .aqua)
+        window.contentView = hosting
+        window.orderFrontRegardless()
         Task {
-            try? await Task.sleep(for: .milliseconds(600)) // let fonts and state settle
-            let renderer = ImageRenderer(content: view)
-            renderer.scale = 2
-            if let image = renderer.nsImage, let tiff = image.tiffRepresentation,
-               let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
-                try? png.write(to: URL(fileURLWithPath: args[i + 1]))
+            try? await Task.sleep(for: .milliseconds(800)) // let fonts and state settle
+            window.setContentSize(hosting.fittingSize)
+            hosting.layoutSubtreeIfNeeded()
+            if let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) {
+                hosting.cacheDisplay(in: hosting.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
             }
             NSApp.terminate(nil)
         }

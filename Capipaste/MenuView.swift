@@ -39,7 +39,7 @@ struct MenuView: View {
                 Text(problem)
                     .font(.system(size: 11))
                     .foregroundStyle(Color.ink)
-                    .padding(.horizontal, 9).padding(.vertical, 4)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -50,10 +50,9 @@ struct MenuView: View {
                 Spacer()
                 small("Quit", systemImage: "power") { NSApp.terminate(nil) }
             }
-            .padding(.top, 4)
         }
         .font(.system(size: 13))
-        .padding(6)
+        .padding(8)
         .frame(width: 320)
         .fixedSize(horizontal: false, vertical: true)
         .animation(.snappy(duration: 0.18), value: open)
@@ -64,9 +63,10 @@ struct MenuView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(spacing: 11) {
-            AcornMark().frame(height: 44)
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 12) {
+            // 40pt keeps whole-pixel dots (39 rows: 2px each on Retina); anything under 39 halves the mark.
+            AcornMark().frame(height: 40)
+            VStack(alignment: .leading, spacing: 2) {
                 Text("Capipaste").font(.system(size: 15, weight: .semibold))
                 HStack(spacing: 5) {
                     Circle()
@@ -80,7 +80,7 @@ struct MenuView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 9).padding(.top, 6).padding(.bottom, 4)
+        .padding(.horizontal, 8).padding(.vertical, 4)
     }
 
     private var micShortName: String {
@@ -121,26 +121,27 @@ struct MenuView: View {
 
     private func drop(_ which: Drop, _ title: String, value: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Chevron trails, like Control Center, so every title starts on the same column as the actions.
             row { open = open == which ? nil : which } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
-                    .rotationEffect(.degrees(open == which ? 90 : 0))
-                    .frame(width: 12)
-                    .foregroundStyle(.secondary)
                 Text(title)
                 Spacer(minLength: 8)
                 Text(value)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(open == which ? 90 : 0))
+                    .frame(width: 12)
+                    .foregroundStyle(.tertiary)
             }
             .accessibilityValue(value)
             .accessibilityHint(open == which ? "Collapse" : "Show choices")
             if open == which {
                 VStack(alignment: .leading, spacing: 0) { content() }
-                    .padding(.vertical, 3)
-                    .background(.primary.opacity(0.045), in: .rect(cornerRadius: 8))
-                    .padding(.horizontal, 4).padding(.bottom, 4)
+                    .padding(4)
+                    .background(.primary.opacity(0.05), in: .rect(cornerRadius: 10))
+                    .padding(.vertical, 4)
                     .transition(.opacity)
             }
         }
@@ -196,7 +197,7 @@ struct MenuView: View {
         toggle("Screen text", Binding(get: { ocrMode != .never }, set: { ocrMode = $0 ? .terminals : .never }))
         Text("Your words always go.")
             .font(.system(size: 11)).foregroundStyle(.secondary)
-            .padding(.horizontal, 9).padding(.vertical, 3)
+            .padding(.leading, 28).padding(.vertical, 4)
     }
 
     @ViewBuilder
@@ -250,28 +251,28 @@ struct MenuView: View {
             app.openSettings(tab: tab)
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "gearshape").font(.system(size: 12, weight: .medium))
+                Image(systemName: "gearshape").font(.system(size: 12, weight: .medium)).frame(width: 16)
                 Text("Settings").font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Text("models · mics · keys · shortcuts")
-                    .font(.system(size: 10.5))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            .padding(.horizontal, 11)
+            .padding(.horizontal, 8)
             .frame(height: 32)
             .contentShape(.rect)
         }
         .buttonStyle(KeyCapStyle())
-        .padding(.horizontal, 4).padding(.top, 2)
+        .padding(.bottom, 4)
     }
 
     private func small(_ title: String, systemImage: String, _ run: @escaping () -> Void) -> some View {
         MenuRow(action: run) {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 11.5))
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 9).padding(.vertical, 3)
+                .padding(.horizontal, 8).padding(.vertical, 4)
         }
         .fixedSize()
     }
@@ -298,7 +299,7 @@ struct MenuView: View {
         Text("macOS has to let Capipaste in before ⌘⇧S works.")
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 9).padding(.bottom, 6)
+            .padding(.horizontal, 8).padding(.bottom, 4)
             .fixedSize(horizontal: false, vertical: true)
 
         ForEach(permissions.steps) { step in
@@ -319,7 +320,7 @@ struct MenuView: View {
                             .foregroundStyle(Color.glacier)
                     }
                 }
-                .padding(.horizontal, 9).padding(.vertical, 5)
+                .padding(.horizontal, 8).padding(.vertical, 4)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -349,7 +350,7 @@ struct MenuView: View {
     }
 
     private func row(action: @escaping () -> Void, @ViewBuilder label: () -> some View) -> some View {
-        MenuRow(action: action) { HStack(spacing: 8) { label() }.padding(.horizontal, 9).padding(.vertical, 4) }
+        MenuRow(action: action) { HStack(spacing: 8) { label() }.padding(.horizontal, 8).padding(.vertical, 4) }
     }
 
     private func toggle(_ title: String, _ on: Binding<Bool>) -> some View {
@@ -372,11 +373,11 @@ struct MenuView: View {
         Text(title)
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 9).padding(.top, 4).padding(.bottom, 2)
+            .padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 4)
     }
 
     private var divider: some View {
-        Divider().padding(.horizontal, 9).padding(.vertical, 5)
+        Divider().padding(.horizontal, 8).padding(.vertical, 4)
     }
 }
 
