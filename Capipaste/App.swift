@@ -20,7 +20,7 @@ struct CapipasteApp: App {
                 .environment(app.stt)
                 .environment(app.permissions)
         } label: {
-            Image(nsImage: MenuGlyph.image)
+            Image(nsImage: app.dictation?.model.recording == true ? MenuGlyph.recording : MenuGlyph.image)
         }
         .menuBarExtraStyle(.window)
 
@@ -407,32 +407,50 @@ enum Capture {
 }
 
 enum MenuGlyph {
-    /// Capture corners with a pair of horns, drawn as a template image.
-    static let image: NSImage = {
+    /// The brand acorn (AcornMark's silhouette) as a template image: solid cap, outlined nut.
+    static let image = acorn(filled: false)
+    /// While dictating the nut fills in too.
+    static let recording = acorn(filled: true)
+
+    private static func acorn(filled: Bool) -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
-            NSColor.black.setStroke()
-            let corners = NSBezierPath()
-            corners.lineWidth = 1.6
-            corners.lineCapStyle = .round
-            for (a, b, c) in [((2, 6), (2, 2), (6, 2)), ((12, 2), (16, 2), (16, 6)),
-                              ((16, 12), (16, 16), (12, 16)), ((6, 16), (2, 16), (2, 12))] {
-                corners.move(to: NSPoint(x: a.0, y: a.1))
-                corners.line(to: NSPoint(x: b.0, y: b.1))
-                corners.line(to: NSPoint(x: c.0, y: c.1))
+            NSColor.black.set()
+            let stem = NSBezierPath()
+            stem.lineWidth = 1.6
+            stem.lineCapStyle = .round
+            stem.move(to: NSPoint(x: 9, y: 4.5))
+            stem.curve(to: NSPoint(x: 11.5, y: 1.5), controlPoint1: NSPoint(x: 9.2, y: 3),
+                       controlPoint2: NSPoint(x: 10.2, y: 1.9))
+            stem.stroke()
+            let cap = NSBezierPath()
+            cap.move(to: NSPoint(x: 2, y: 8.6))
+            cap.curve(to: NSPoint(x: 9, y: 3.4), controlPoint1: NSPoint(x: 2, y: 5.2),
+                      controlPoint2: NSPoint(x: 5.2, y: 3.4))
+            cap.curve(to: NSPoint(x: 16, y: 8.6), controlPoint1: NSPoint(x: 12.8, y: 3.4),
+                      controlPoint2: NSPoint(x: 16, y: 5.2))
+            cap.curve(to: NSPoint(x: 2, y: 8.6), controlPoint1: NSPoint(x: 11.5, y: 9.6),
+                      controlPoint2: NSPoint(x: 6.5, y: 9.6))
+            cap.fill()
+            let nut = NSBezierPath()
+            nut.move(to: NSPoint(x: 3.9, y: 9.4))
+            nut.curve(to: NSPoint(x: 9, y: 16.4), controlPoint1: NSPoint(x: 3.8, y: 14),
+                      controlPoint2: NSPoint(x: 6.6, y: 16.1))
+            nut.curve(to: NSPoint(x: 14.1, y: 9.4), controlPoint1: NSPoint(x: 11.4, y: 16.1),
+                      controlPoint2: NSPoint(x: 14.2, y: 14))
+            if filled {
+                nut.close()
+                nut.fill()
+            } else {
+                nut.lineWidth = 1.5
+                nut.lineCapStyle = .round
+                nut.lineJoinStyle = .round
+                nut.stroke()
             }
-            corners.stroke()
-            let horns = NSBezierPath()
-            horns.lineWidth = 1.6
-            horns.lineCapStyle = .round
-            horns.move(to: NSPoint(x: 6.5, y: 12))
-            horns.curve(to: NSPoint(x: 11.5, y: 12), controlPoint1: NSPoint(x: 6.5, y: 5.5),
-                        controlPoint2: NSPoint(x: 11.5, y: 5.5))
-            horns.stroke()
             return true
         }
         image.isTemplate = true
         return image
-    }()
+    }
 }
 
 /// Appends a line to ~/Library/Logs/Capipaste.log (capture-flow breadcrumbs). One writer at a time, from
