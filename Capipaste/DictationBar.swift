@@ -309,16 +309,16 @@ struct DictationView: View {
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(model.failure != nil ? Color.ink : .primary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, minHeight: 66, maxHeight: 66, alignment: .bottomLeading)
+                    .frame(maxWidth: .infinity, minHeight: 66, maxHeight: 66, alignment: model.failure != nil ? .topLeading : .bottomLeading)
                     .clipped()
-                    .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.2)],
+                    .mask(LinearGradient(stops: [.init(color: model.failure != nil ? .black : .clear, location: 0), .init(color: .black, location: 0.2)],
                                          startPoint: .top, endPoint: .bottom))
                     .transition(.opacity)
             }
         }
         .padding(.horizontal, large ? 18 : 16)
         .frame(width: size.width, height: size.height)
-        .background(.white.opacity(0.92), in: .rect(cornerRadius: large ? 22 : 20, style: .continuous))
+        .background(.white.opacity(0.98), in: .rect(cornerRadius: large ? 22 : 20, style: .continuous))
         .clipShape(.rect(cornerRadius: large ? 22 : 20, style: .continuous)) // mid-grow, words stay inside
         .overlay(RoundedRectangle(cornerRadius: large ? 22 : 20, style: .continuous).strokeBorder(.primary.opacity(0.10)))
         // two soft passes hug the pill instead of boxing it in
