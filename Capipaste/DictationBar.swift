@@ -96,7 +96,6 @@ final class DictationModel {
         }
         stt.begin()
         AppModel.shared.tidy.prewarm()
-        if autoPaste { PasteSession.snapshot() }
         startedAt = .now
         loudBuffers = 0
         let recorder = self.recorder
@@ -116,6 +115,8 @@ final class DictationModel {
                 await MainActor.run { self?.failure = "Couldn't open \(mic.name)." }
             }
         }
+        // After the mic start is queued: a big image on the clipboard mustn't delay recording.
+        if autoPaste { PasteSession.snapshot() }
     }
 
     private func receive(_ samples: [Float], _ level: Float) {
