@@ -19,14 +19,39 @@ final class DictationBar {
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        let hosting = NSHostingView(rootView: DictationView(model: model).padding(30))
+        model.expanded = UserDefaults.standard.string(forKey: "hudSize") == "large"
+        // Bottom-aligned so a growing pill stays put on screen while the panel jumps to its new size.
+        let hosting = NSHostingView(rootView: DictationView(model: model).padding(30)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom))
+        hosting.sizingOptions = [] // the panel is sized here, not by the view
         panel.contentView = hosting
-        panel.setContentSize(hosting.fittingSize)
+        let pill = DictationView.size(expanded: model.expanded)
+        panel.setContentSize(NSSize(width: pill.width + 60, height: pill.height + 60))
 
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
         if let visible = screen?.visibleFrame {
             panel.setFrameOrigin(NSPoint(x: visible.midX - panel.frame.width / 2,
                                          y: visible.minY + visible.height * 0.16))
+        }
+        // Hover opens the small bar. Polled: neither onHover nor a tracking area fires for this panel while
+        // Capipaste isn't the active app, which is always. ponytail: 10 Hz only while a small bar is up.
+        if !model.expanded {
+            Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak panel, weak model] timer in
+                MainActor.assumeIsolated {
+                    guard let panel, let model, panel.isVisible, !model.expanded else { return timer.invalidate() }
+                    guard panel.frame.insetBy(dx: 30, dy: 30).contains(NSEvent.mouseLocation) else { return }
+                    // Panel first, unanimated, so the small pill doesn't slide while the frame catches up.
+                    model.grow()
+                    panel.contentView?.layoutSubtreeIfNeeded()
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { model.expanded = true }
+                }
+            }
+        }
+        // Grows once (hover or an error), anchored bottom-centre; never shrinks within a take.
+        model.grow = { [panel] in
+            let old = panel.frame, new = DictationView.size(expanded: true)
+            panel.setFrame(NSRect(x: old.midX - (new.width + 60) / 2, y: old.minY,
+                                  width: new.width + 60, height: new.height + 60), display: true)
         }
         var closed = false
         model.close = { [panel] in
@@ -61,7 +86,11 @@ final class DictationModel {
     var finishing = false
     var tidying = false
     var done = false
-    var failure: String?
+    /// A small bar can't hold a sentence: an error opens it up.
+    var failure: String? { didSet { if failure != nil { expanded = true } } }
+    /// Large bar (live words under the waveform); the small one opens up on hover, for this take.
+    var expanded = false { didSet { if expanded, !oldValue { grow() } } }
+    var grow: () -> Void = {}
     var pasted: Bool { autoPaste }
     /// Cancelled, finished or never started: a mic that comes up late closes straight away.
     private var over = false
@@ -83,7 +112,21 @@ final class DictationModel {
     }
 
     var model: SpeechModel { stt.inUse }
-    var live: String { stt.live }
+    var live: String {
+        #if TESTHOOKS
+        if let shown { return shown }
+        #endif
+        return stt.live
+    }
+    #if TESTHOOKS
+    /// `-dictate <seconds> <words>`: the words stand in for speech, three a second (testing the bar).
+    private let scripted: String? = {
+        let args = hookArguments
+        guard let i = args.firstIndex(of: "-dictate"), i + 2 < args.count, !args[i + 2].hasPrefix("-") else { return nil }
+        return args[i + 2]
+    }()
+    private var shown: String?
+    #endif
 
     func start() {
         guard let mic else {
@@ -95,6 +138,17 @@ final class DictationModel {
             return
         }
         stt.begin()
+        #if TESTHOOKS
+        if let scripted {
+            Task {
+                let words = scripted.split(separator: " ")
+                for n in 1...words.count where !over {
+                    try? await Task.sleep(for: .milliseconds(330))
+                    shown = words.prefix(n).joined(separator: " ")
+                }
+            }
+        }
+        #endif
         AppModel.shared.tidy.prewarm()
         startedAt = .now
         loudBuffers = 0
@@ -164,7 +218,11 @@ final class DictationModel {
         finishing = true
         Task {
             let take = await stt.finish(expectSpeech: heardSpeech)
-            let spoken = take.text, audio = take.audio
+            var spoken = take.text
+            let audio = take.audio
+            #if TESTHOOKS
+            if let scripted { spoken = scripted }
+            #endif
             finishing = false
             guard !cancelled else { return }
             guard let spoken, !spoken.isEmpty else {
@@ -212,45 +270,67 @@ final class DictationModel {
 struct DictationView: View {
     @Bindable var model: DictationModel
 
+    /// The pill alone, without the 30 pt the panel keeps around it for the shadow.
+    static func size(expanded: Bool) -> CGSize { expanded ? CGSize(width: 420, height: 132) : CGSize(width: 180, height: 40) }
+
     var body: some View {
-        HStack(spacing: 14) {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(model.recording ? Color.ink : .secondary)
-                    .frame(width: 8, height: 8)
-                TimelineView(.periodic(from: model.startedAt, by: 1)) { context in
-                    let seconds = Int(context.date.timeIntervalSince(model.startedAt))
-                    Text(String(format: "%d:%02d", seconds / 60, seconds % 60))
-                        .monospacedDigit()
+        let large = model.expanded
+        let size = Self.size(expanded: large)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(model.recording ? Color.ink : .secondary)
+                        .frame(width: 8, height: 8)
+                    if large {
+                        TimelineView(.periodic(from: model.startedAt, by: 1)) { context in
+                            let seconds = Int(context.date.timeIntervalSince(model.startedAt))
+                            Text(String(format: "%d:%02d", seconds / 60, seconds % 60))
+                                .monospacedDigit()
+                        }
+                    }
                 }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.black.opacity(0.7))
+
+                if model.done, !large {
+                    Spacer(minLength: 0)
+                    check
+                    Spacer(minLength: 0)
+                } else {
+                    Waveform(levels: model.levels, live: model.recording)
+                        .frame(height: large ? 30 : 24)
+                }
+                if model.done, large { check }
             }
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(.black.opacity(0.7))
-
-            Waveform(levels: model.levels, live: model.recording)
-                .frame(width: 120, height: 34)
-
-            Text(caption)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(model.failure != nil ? Color.ink : .primary)
-                .lineLimit(2)
-                .frame(maxWidth: 420, alignment: .leading)
-                .frame(minWidth: 220, alignment: .leading)
-
-            if model.done {
-                Label(model.pasted ? "Pasted" : "Copied", systemImage: "checkmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.glacier)
+            if large {
+                // Newest words at the bottom; older lines slide up under a fade.
+                Text(caption)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(model.failure != nil ? Color.ink : .primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 66, maxHeight: 66, alignment: .bottomLeading)
+                    .clipped()
+                    .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.2)],
+                                         startPoint: .top, endPoint: .bottom))
+                    .transition(.opacity)
             }
         }
-        .padding(.horizontal, 18)
-        .frame(height: 64)
-        .background(.white.opacity(0.92), in: .capsule)
-        .overlay(Capsule().strokeBorder(.primary.opacity(0.10)))
+        .padding(.horizontal, large ? 18 : 16)
+        .frame(width: size.width, height: size.height)
+        .background(.white.opacity(0.92), in: .rect(cornerRadius: large ? 22 : 20, style: .continuous))
+        .clipShape(.rect(cornerRadius: large ? 22 : 20, style: .continuous)) // mid-grow, words stay inside
+        .overlay(RoundedRectangle(cornerRadius: large ? 22 : 20, style: .continuous).strokeBorder(.primary.opacity(0.10)))
         // two soft passes hug the pill instead of boxing it in
         .shadow(color: .black.opacity(0.13), radius: 18, y: 8)
         .shadow(color: .black.opacity(0.07), radius: 4, y: 1)
         .environment(\.colorScheme, .light)
+    }
+
+    private var check: some View {
+        Label(model.pasted ? "Pasted" : "Copied", systemImage: "checkmark")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.glacier)
     }
 
     private var caption: String {

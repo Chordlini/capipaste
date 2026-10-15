@@ -53,6 +53,7 @@ private struct GeneralSettings: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @AppStorage("ocrMode") private var ocrMode: OCR.Mode = .terminals
     @AppStorage("context") private var context = true
+    @AppStorage("hudSize") private var hudSize = "small"
 
     var body: some View {
         Form {
@@ -67,6 +68,10 @@ private struct GeneralSettings: View {
                     get: { app.pushToTalk.trigger },
                     set: { app.pushToTalk.trigger = $0 })) {
                     ForEach(PushToTalk.Trigger.allCases) { Text($0.title).tag($0) }
+                }
+                Picker("Bar", selection: $hudSize) {
+                    Text("Small").tag("small")
+                    Text("Large, with live words").tag("large")
                 }
                 Text(permissions.canDictateHandsFree
                      ? "Hold the key, say what you want, let go: it pastes where you were, and whatever you had copied is put back. ⌃⌘V pastes it again."
